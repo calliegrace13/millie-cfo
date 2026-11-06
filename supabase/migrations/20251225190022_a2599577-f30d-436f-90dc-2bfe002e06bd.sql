@@ -1,0 +1,1 @@
+ALTER TABLE public.amortization_schedules DROP COLUMN is_one_time;

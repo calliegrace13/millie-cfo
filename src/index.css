@@ -1,0 +1,273 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Inter&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Lora&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Space+Mono&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 45 20% 97%;
+    --foreground: 140 30% 18%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 140 30% 18%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 140 30% 18%;
+
+    --primary: 140 35% 32%;
+    --primary-foreground: 45 20% 98%;
+
+    --secondary: 90 18% 92%;
+    --secondary-foreground: 140 25% 22%;
+
+    --muted: 85 12% 88%;
+    --muted-foreground: 140 15% 45%;
+
+    --accent: 44 54% 54%;
+    --accent-foreground: 140 35% 15%;
+
+    --destructive: 44 54% 48%;
+    --destructive-foreground: 140 35% 15%;
+
+    --success: 140 50% 38%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 44 54% 54%;
+    --warning-foreground: 140 35% 15%;
+
+    --border: 100 12% 85%;
+    --input: 100 12% 88%;
+    --ring: 44 54% 50%;
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 45 15% 95%;
+    --sidebar-foreground: 140 30% 18%;
+    --sidebar-primary: 140 35% 32%;
+    --sidebar-primary-foreground: 45 20% 98%;
+    --sidebar-accent: 44 54% 54%;
+    --sidebar-accent-foreground: 140 35% 15%;
+    --sidebar-border: 100 12% 85%;
+    --sidebar-ring: 44 54% 50%;
+
+    --chart-1: 140 35% 40%;
+    --chart-2: 42 75% 50%;
+    --chart-3: 90 30% 50%;
+    --chart-4: 38 65% 55%;
+    --chart-5: 145 25% 55%;
+    --sidebar: 45 15% 95%;
+    --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+    --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    --shadow-2xs: 0 1px 3px 0px hsl(140 20% 20% / 0.04);
+    --shadow-xs: 0 1px 3px 0px hsl(140 20% 20% / 0.06);
+    --shadow-sm: 0px 1px 2px 0px hsl(140 25% 30% / 0.08);
+    --shadow: 0px 1px 3px 0px hsl(140 25% 30% / 0.1);
+    --shadow-md: 0px 2px 6px 0px hsl(140 25% 30% / 0.12);
+    --shadow-lg: 0px 4px 12px 0px hsl(140 25% 30% / 0.15);
+    --shadow-xl: 0 1px 3px 0px hsl(140 20% 20% / 0.08), 0 8px 10px -1px hsl(140 20% 20% / 0.08);
+    --shadow-2xl: 0 1px 3px 0px hsl(140 20% 20% / 0.2);
+    --tracking-normal: 0em;
+    --spacing: 0.25rem;
+  }
+
+  /* Role-based themes – light mode */
+  :root[data-role="cfo"] {
+    --background: 45 20% 97%;
+    --primary: 140 35% 32%;
+    --primary-foreground: 45 20% 98%;
+    --sidebar-background: 140 18% 94%;
+    --sidebar-primary: 140 35% 32%;
+    --ring: 140 35% 40%;
+  }
+  :root[data-role="coo"] {
+    --background: 0 15% 97%;
+    --primary: 0 85% 45%;
+    --primary-foreground: 0 0% 100%;
+    --sidebar-background: 0 18% 94%;
+    --sidebar-primary: 0 85% 45%;
+    --ring: 0 85% 50%;
+  }
+  :root[data-role="ceo"] {
+    --background: 220 25% 97%;
+    --primary: 220 55% 30%;
+    --primary-foreground: 220 25% 98%;
+    --sidebar-background: 220 20% 94%;
+    --sidebar-primary: 220 55% 30%;
+    --ring: 220 55% 40%;
+  }
+  :root[data-role="chro"] {
+    --background: 175 25% 97%;
+    --primary: 175 55% 32%;
+    --primary-foreground: 175 25% 98%;
+    --sidebar-background: 175 20% 94%;
+    --sidebar-primary: 175 55% 32%;
+    --ring: 175 55% 40%;
+  }
+  :root[data-role="cto"] {
+    --background: 270 20% 97%;
+    --primary: 270 45% 40%;
+    --primary-foreground: 270 20% 98%;
+    --sidebar-background: 270 18% 94%;
+    --sidebar-primary: 270 45% 40%;
+    --ring: 270 45% 48%;
+  }
+  :root[data-role="cio"] {
+    --background: 35 25% 97%;
+    --primary: 35 65% 38%;
+    --primary-foreground: 35 25% 98%;
+    --sidebar-background: 35 20% 94%;
+    --sidebar-primary: 35 65% 38%;
+    --ring: 35 65% 45%;
+  }
+  :root[data-role="cmo"] {
+    --background: 330 20% 97%;
+    --primary: 330 55% 42%;
+    --primary-foreground: 330 20% 98%;
+    --sidebar-background: 330 18% 94%;
+    --sidebar-primary: 330 55% 42%;
+    --ring: 330 55% 48%;
+  }
+
+  .dark {
+    --background: 145 35% 8%;
+    --foreground: 45 25% 95%;
+
+    --card: 145 30% 12%;
+    --card-foreground: 45 25% 95%;
+
+    --popover: 145 30% 12%;
+    --popover-foreground: 45 25% 95%;
+
+    --primary: 135 45% 50%;
+    --primary-foreground: 145 35% 8%;
+
+    --secondary: 145 22% 18%;
+    --secondary-foreground: 45 20% 90%;
+
+    --muted: 145 18% 16%;
+    --muted-foreground: 100 12% 55%;
+
+    --accent: 44 50% 58%;
+    --accent-foreground: 145 35% 10%;
+
+    --destructive: 44 50% 52%;
+    --destructive-foreground: 145 35% 10%;
+
+    --success: 140 50% 45%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 44 50% 58%;
+    --warning-foreground: 145 35% 10%;
+
+    --border: 145 20% 20%;
+    --input: 145 20% 18%;
+    --ring: 44 50% 54%;
+
+    --sidebar-background: 148 35% 6%;
+    --sidebar-foreground: 45 25% 95%;
+    --sidebar-primary: 135 45% 50%;
+    --sidebar-primary-foreground: 145 35% 8%;
+    --sidebar-accent: 44 50% 58%;
+    --sidebar-accent-foreground: 145 35% 10%;
+    --sidebar-border: 145 20% 20%;
+    --sidebar-ring: 44 50% 54%;
+
+    --chart-1: 135 45% 50%;
+    --chart-2: 42 65% 55%;
+    --chart-3: 90 35% 55%;
+    --chart-4: 38 60% 60%;
+    --chart-5: 145 30% 60%;
+    --sidebar: 148 35% 6%;
+    --shadow-2xs: 0 1px 3px 0px hsl(0 0% 0% / 0.15);
+    --shadow-xs: 0 1px 3px 0px hsl(0 0% 0% / 0.2);
+    --shadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.25), 0 1px 2px -1px hsl(0 0% 0% / 0.2);
+    --shadow: 0 1px 3px 0px hsl(0 0% 0% / 0.3), 0 1px 2px -1px hsl(0 0% 0% / 0.25);
+    --shadow-md: 0 1px 3px 0px hsl(0 0% 0% / 0.3), 0 2px 4px -1px hsl(0 0% 0% / 0.25);
+    --shadow-lg: 0 1px 3px 0px hsl(0 0% 0% / 0.35), 0 4px 6px -1px hsl(0 0% 0% / 0.3);
+    --shadow-xl: 0 1px 3px 0px hsl(0 0% 0% / 0.4), 0 8px 10px -1px hsl(0 0% 0% / 0.35);
+    --shadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.5);
+  }
+
+  /* Role-based themes – dark mode */
+  .dark[data-role="cfo"] {
+    --background: 145 35% 8%;
+    --primary: 135 45% 50%;
+    --primary-foreground: 145 35% 8%;
+    --sidebar-background: 140 30% 7%;
+    --sidebar-primary: 135 45% 50%;
+    --ring: 135 45% 50%;
+  }
+  .dark[data-role="coo"] {
+    --background: 340 28% 8%;
+    --primary: 340 50% 50%;
+    --primary-foreground: 340 28% 8%;
+    --sidebar-background: 340 25% 7%;
+    --sidebar-primary: 340 50% 50%;
+    --ring: 340 50% 50%;
+  }
+  .dark[data-role="ceo"] {
+    --background: 220 30% 8%;
+    --primary: 215 60% 55%;
+    --primary-foreground: 220 30% 8%;
+    --sidebar-background: 220 28% 7%;
+    --sidebar-primary: 215 60% 55%;
+    --ring: 215 60% 55%;
+  }
+  .dark[data-role="chro"] {
+    --background: 175 30% 8%;
+    --primary: 175 55% 45%;
+    --primary-foreground: 175 30% 8%;
+    --sidebar-background: 175 28% 7%;
+    --sidebar-primary: 175 55% 45%;
+    --ring: 175 55% 45%;
+  }
+  .dark[data-role="cto"] {
+    --background: 270 28% 8%;
+    --primary: 270 50% 58%;
+    --primary-foreground: 270 28% 8%;
+    --sidebar-background: 270 26% 7%;
+    --sidebar-primary: 270 50% 58%;
+    --ring: 270 50% 58%;
+  }
+  .dark[data-role="cio"] {
+    --background: 35 28% 8%;
+    --primary: 35 60% 52%;
+    --primary-foreground: 35 28% 8%;
+    --sidebar-background: 35 26% 7%;
+    --sidebar-primary: 35 60% 52%;
+    --ring: 35 60% 52%;
+  }
+  .dark[data-role="cmo"] {
+    --background: 330 28% 8%;
+    --primary: 330 55% 55%;
+    --primary-foreground: 330 28% 8%;
+    --sidebar-background: 330 26% 7%;
+    --sidebar-primary: 330 55% 55%;
+    --ring: 330 55% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-sans font-semibold tracking-tight;
+  }
+}
+
+@layer utilities {
+  .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
