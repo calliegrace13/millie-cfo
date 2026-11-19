@@ -1,0 +1,41 @@
+import assert from 'node:assert/strict';
+import {edgeModule} from './helpers/edge-module.mjs';
+const {checkReceiptBatch,processReceiptSources,receiptKey}=await import(edgeModule('_shared/receipt-batch.ts'));
+const {evidenceDate}=await import(edgeModule('_shared/receipt-contract.ts'));
+assert.equal(evidenceDate('Order date: 2026-10-04T23:45:00-04:00'),'2026-10-04');
+assert.equal(evidenceDate('Purchased October 4th, 2026 at noon'),'2026-10-04');
+for(const bad of ['October 4','04/05/2026','October 4, 2026 to October 6, 2026','2026-02-30'])assert.equal(evidenceDate(bad),null);
+const source=(name,date)=>({name,text:name+' Soap Total USD 12.34 '+date});
+const a=source('Example Shop','Order date: 2026-10-04T23:45:00-04:00'),b=source('Example Pharmacy','04/05/2026'),c=source('Corner Store','October 9, 2026');
+const row=(source,s,dateEvidence)=>({source,merchant:s.name,merchantEvidence:s.name,reference:'',currency:'USD',amount:12.34,amountEvidence:'Total USD 12.34',date:'2026-10-05',dateEvidence,items:[{name:'Soap',category:'Home',evidence:'Soap'}]});
+const checked=checkReceiptBatch({receipts:[row(0,a,'Order date: 2026-10-04T23:45:00-04:00'),row(1,b,'04/05/2026')]},[a,b]);
+assert.equal(checked.receipts[0].date,'2026-10-04');assert.equal(checked.receipts.length,1);assert.deepEqual(checked.issues.map(i=>i.source),[1]);
+const history=new Map(),sent=[],questions=new Set();
+const admin={rpc:async(fn,args)=>{
+ if(fn==='finance_receipt_source_history')return {data:args._keys.map(k=>history.get(k)).filter(Boolean)};
+ assert.equal(fn,'finance_record_receipt_exceptions');for(const q of args._items)questions.add(q.key);return {};
+}};
+const infer=async(sources,keys)=>{
+ sent.push(sources.map(s=>s.name));
+ const result=sources[0]===a?checked:{receipts:[{...row(0,c,'October 9, 2026'),date:'2026-10-09'}],issues:[]};
+ keys.forEach((k,i)=>history.set(k,{source_key:k,state:'succeeded',receipts:result.receipts.filter(r=>r.source===i),issues:result.issues.filter(r=>r.source===i)}));
+ return result;
+};
+await processReceiptSources(admin,'owner',[a,b],infer);
+const resumed=await processReceiptSources(admin,'owner',[b,c,a,a],infer);
+assert.deepEqual(sent,[['Example Shop','Example Pharmacy'],['Corner Store']]);
+assert.deepEqual(resumed.receipts.map(r=>r.source).sort(),[1,2]);assert.deepEqual(resumed.issues.map(i=>i.source),[0]);assert.equal(questions.size,1);
+await processReceiptSources(admin,'owner',[b,a],()=>assert.fail('Paid replay'));
+history.set(await receiptKey(c.text),{source_key:await receiptKey(c.text),state:'failed',issues:[],receipts:[]});
+assert.equal((await processReceiptSources(admin,'owner',[c],()=>assert.fail('Paid retry'))).issues.length,1);
+history.get(await receiptKey(c.text)).state='running';
+await assert.rejects(processReceiptSources(admin,'owner',[c],()=>assert.fail('Concurrent charge')),/still running/);
+console.log('Passed calendar-date evidence, per-source isolation, changed batch order, partial overlaps, unresolved replay and concurrent-call protection.');
+
+const offer={name:'Still deciding on Purchase Protection?',text:'You can add optional coverage for two more days.'};
+assert.deepEqual(checkReceiptBatch({receipts:[]},[offer]).issues,[]);
+const ad={name:'Update',text:'Shop our new summer arrivals this weekend.'};
+const notice={source:0,kind:'notice',evidence:'Shop our new summer arrivals'};
+assert.deepEqual(checkReceiptBatch({receipts:[],sourceChecks:[notice]},[ad]).issues,[]);
+assert.equal(checkReceiptBatch({receipts:[],sourceChecks:[notice]},[{...ad,text:ad.text+' Order total: $14.58'}]).issues.length,1);
+assert.equal(checkReceiptBatch({receipts:[],sourceChecks:[{...notice,evidence:'Invented evidence'}]},[ad]).issues.length,1);

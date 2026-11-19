@@ -1,46 +1,33 @@
 # Millie CFO
 
-Millie CFO tracks accounts, spending, budgets, and cash flow. You can run the web app on your computer with its own local database. Manual accounts work without a Plaid subscription. The optional bank connection uses your own Plaid credentials.
+The current customized Millie CFO: accounts and transactions, receipt evidence, Gmail syncing, AI assistance, financial reports, household sharing, planning, and configurable modules. MIT licensed. Copyright (c) 2026 Calvin.
 
-## Run locally
+This replaces the older starter app in this repository. Its history remains in Git. The customized source came from running Millie Site revision `a8c158c884cdc1ecad3c4775939b44b6a18947a5`.
 
-Install Node.js 22 or newer and start Docker Desktop or a compatible container runtime. From the repository directory, run:
+## Edit in your browser
 
-```sh
-npm ci
-npx supabase start
-npx supabase status
-```
+Open **Code → Codespaces** and create a **2-core** codespace. Dependencies install once, then the Millie preview starts on port 8080. Open **Ports → Millie CFO preview**. Keep the preview port private. Edit files in the browser and commit changes to preserve your work.
 
-Copy `.env.example` to `.env.local`. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` to the local API URL and publishable key printed by Supabase. If your CLI shows an anon key instead, use that as the browser key.
+Before starting, confirm personal GitHub billing has a **$0 Codespaces budget with Stop usage enabled**. Use a 10-minute idle timeout, stop the codespace when finished, and delete unused codespaces after committing changes. Included compute and storage are limited; when exhausted, wait for the allowance to reset. Do not enable paid overages, prebuilds, larger machines, or a paid Copilot plan for this setup.
 
-```sh
-npm run dev -- --host localhost --port 8080 --strictPort
-```
+The always-free GitHub web editor opens when you press `.` on the repository page. It edits code but cannot run a preview.
 
-Open [Millie CFO on localhost](http://localhost:8080), create a local account, then choose **Accounts → Manual Account**. If signup requires email confirmation, use the local mail inbox URL shown by `npx supabase status`. Each local instance starts with its own database.
+## Run and check
 
-## Optional Plaid Sandbox
+Use Node.js 22. Run `npm ci`, then `npm run dev`. Build with `npm run build` and verify output with `npm run check:hosting`. Hosting tests use synthetic inputs and make no paid AI, Gmail, or bank calls.
 
-Copy `supabase/functions/.env.example` to `supabase/functions/.env` and set your Plaid Sandbox client ID, Sandbox secret, and a persistent random encryption key. Keep that encryption key with your deployment so previously stored connection tokens can still be decrypted. Set `VITE_ENABLE_PLAID=true` in `.env.local`, restart Vite, and restart the local Supabase stack with `npx supabase stop` followed by `npx supabase start`.
+## Free Cloudflare hosting
 
-Keep the Plaid secret, encryption key, and Supabase service role key on the server. Vite bundles variables beginning with `VITE_` into the browser app. Only put the Supabase URL and browser key in the front-end settings.
+Use **Workers Free** and the included `workers.dev` address. Connect this GitHub repository with build command `npm run build && npm run check:hosting` and deploy command `npm run deploy:cloudflare`. The configuration serves static assets and supports direct links and refreshes. It provisions no Worker script, database, bucket, AI service, or scheduler. Do not upgrade Workers or buy a domain for this setup.
 
-Run the Plaid unit tests with `node --test supabase/tests/plaid-ledger.test.mjs`. Run the SQL regression script against a disposable Supabase database after applying migrations.
+The existing Supabase backend holds accounts, preferences, financial records, server functions, credentials, and scheduled work. This repository contains code, not those records or secrets. Keep the existing app running during migration. Set up owner-only access on the new host and verify login, saved settings, reports, Gmail, AI, and background work before switching the main URL. Update Google OAuth callbacks and Supabase auth redirects for the exact new URL; retain old callbacks until cutover is verified.
 
-## Build the web app
+## Data and testing
 
-Set the front-end environment variables for your own Supabase project and run `npm run build`. The build output is in `dist`. For hosting, serve the output over HTTPS and configure the host to route app paths back to `index.html`. Apply the Supabase migrations and deploy the functions you use to your own backend. Configure Supabase Auth's site URL and password reset redirect for your deployed origin. If using Plaid, include that origin in the Edge Functions' `PLAID_ALLOWED_ORIGINS` and configure the credentials there.
+The default browser configuration connects to the existing hosted Supabase project. **Signing in and editing data in a preview can change real records.** To test against a separate backend, set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in an untracked `.env.local`. Never put service-role keys, bank tokens, Google client secrets, or AI provider keys in browser variables or GitHub.
 
-## Build an Android or iOS app
+Hosting and editing free tiers do not cover separate Supabase, Plaid, Google, or AI provider charges. Preserve existing allowances. Do not deploy all Supabase functions or migrations merely to publish the frontend, and do not create a second background scheduler in Codespaces or Cloudflare.
 
-Capacitor packages the contents of `dist` into a native app. It still needs a reachable Supabase backend. A physical device cannot use your computer's `localhost` as its backend. For a phone build, configure your own device-reachable HTTPS Supabase endpoint before building.
+## Customize Millie
 
-```sh
-npm run build
-npx cap add android
-npx cap sync android
-npx cap open android
-```
-
-The add command is a one-time setup. Use Android Studio to run or sign the build. For iOS, use macOS with Xcode and substitute `ios` for `android`. These steps create a native build project. Validate native authentication, password reset, and any enabled bank flow on the target device before distributing a signed build.
+Use **Customize Millie** for modules and AI preferences, **Settings** for app settings, and the financial tools for saved records. Page layouts, styles, and features live in `src/` and can be edited in Codespaces. Saving a file changes the preview; publishing is a separate step.

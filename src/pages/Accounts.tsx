@@ -1,3 +1,8 @@
+import {useModules} from '@/hooks/useModules';
+import {accountDisplayWeight,liquidityByCurrency} from '@/lib/account-display';
+import {AccountHistory} from '@/components/AccountHistory';
+import { DataCoverage } from '@/components/DataCoverage';
+import { useHousehold } from '@/hooks/useHousehold';
 import { useEffect, useState, useCallback } from 'react';
 import { logError } from '@/lib/logging';
 import { supabase } from '@/integrations/supabase/client';
@@ -28,7 +33,7 @@ import { format, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Account } from '@/lib/types';
 import { toast } from 'sonner';
-import { Navigate } from 'react-router-dom';
+import { Navigate, Link } from 'react-router-dom';
 import { AccountTransactionsSheet } from '@/components/accounts/AccountTransactionsSheet';
 
 const accountTypeIcons = {
@@ -43,12 +48,12 @@ const accountTypeIcons = {
 
 export default function Accounts() {
   const { user, loading: authLoading } = useAuth();
+  const {isEnabled}=useModules();
+  const {reload: reloadHousehold,data:householdData,continuity,partnerId:householdPartnerId,loading:householdLoading,error:householdError}=useHousehold();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
   const [accountView, setAccountView] = useState<'accounts' | 'upcoming'>('accounts');
   const [syncing, setSyncing] = useState(false);
-  const [connections, setConnections] = useState<{ id: string; name: string }[]>([]);
-  const [selectedConnection, setSelectedConnection] = useState('');
   const [reconnecting, setReconnecting] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [reconnectDialogOpen, setReconnectDialogOpen] = useState(false);
@@ -81,22 +86,21 @@ export default function Accounts() {
       .order('created_at', { ascending: false });
     
     if (data) setAccounts(data as Account[]);
+    void reloadHousehold();
     setLoading(false);
-  }, []);
+  }, [reloadHousehold]);
 
-  const plaidEnabled = import.meta.env.VITE_ENABLE_PLAID !== 'false';
-  const { openPlaidLink, isLoading: plaidLoading, createLinkToken } = usePlaidLink(fetchAccounts);
+  const { openPlaidLink, isLoading: plaidLoading, ready: plaidReady, createLinkToken } = usePlaidLink(fetchAccounts);
 
   useEffect(() => {
     if (user) {
       fetchAccounts();
-      if (!plaidEnabled) return;
       const timer = setTimeout(() => {
         createLinkToken();
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [user, fetchAccounts, createLinkToken, plaidEnabled]);
+  }, [user, fetchAccounts, createLinkToken]);
 
   // Populate partner form when partner data loads
   useEffect(() => {
@@ -114,15 +118,7 @@ export default function Accounts() {
       const { data, error } = await supabase.functions.invoke('plaid-sync-transactions');
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
-      if (data?.failed) {
-        const failures = (data.results ?? []).filter((item: {status: string}) => item.status === 'failed')
-          .map((item: {institution?: string; reason: string}) => `${item.institution ?? 'Linked bank'}: ${item.reason}`);
-        toast.error('Some bank connections could not sync', { description: failures.join('; ') });
-      } else if (!data?.results?.length) {
-        toast.info('No linked banks to sync');
-      } else {
-        toast.success(`Imported ${data.synced} new transactions`);
-      }
+      if (data.busy) toast.info('A bank sync is already running. Check the coverage panel shortly.'); else toast.success(`Synced ${data.synced} transactions`);
       fetchAccounts();
     } catch (err) {
       logError('Accounts sync', err);
@@ -132,32 +128,36 @@ export default function Accounts() {
     }
   }
 
-  async function loadConnections() {
-    setConnections([]);
-    setSelectedConnection('');
-    const { data, error } = await supabase.from('plaid_items_safe').select('item_id, institution_name');
-    if (error) {
-      toast.error('Could not load bank connections');
-      return;
-    }
-    setConnections((data ?? []).flatMap(item => item.item_id
-      ? [{ id: item.item_id, name: item.institution_name ?? 'Linked bank' }] : []));
-  }
-
-  async function disconnectBank() {
-    if (!selectedConnection) return;
+  async function reconnectAccounts() {
     setReconnecting(true);
     try {
-      const { data, error } = await supabase.functions.invoke('plaid-delete-item', {
-        body: { item_id: selectedConnection },
-      });
-      if (error || !data?.success) throw error ?? new Error('Disconnection failed');
-      toast.success('Bank disconnected. Existing transactions were kept.');
+      const { data: plaidItems, error: fetchError } = await supabase
+        .from('plaid_items_safe')
+        .select('item_id');
+
+      if (fetchError) throw fetchError;
+
+      if (!plaidItems || plaidItems.length === 0) {
+        toast.info('No linked accounts to reconnect');
+        setReconnecting(false);
+        setReconnectDialogOpen(false);
+        return;
+      }
+
+      for (const item of plaidItems) {
+        const { error } = await supabase.functions.invoke('plaid-delete-item', {
+          body: { item_id: item.item_id },
+        });
+        if (error) console.error('Error deleting Plaid item:', error);
+      }
+
+      toast.success('Accounts disconnected. Click "Connect Bank" to re-link with extended history.');
       setReconnectDialogOpen(false);
-      await fetchAccounts();
-    } catch (error) {
-      logError('Bank disconnection', error);
-      toast.error('Could not disconnect this bank. Please retry.');
+      fetchAccounts();
+      setTimeout(() => openPlaidLink(), 500);
+    } catch (err) {
+      logError('Reconnect accounts', err);
+      toast.error('Failed to disconnect accounts');
     } finally {
       setReconnecting(false);
     }
@@ -188,13 +188,13 @@ export default function Accounts() {
   async function deleteAccount(id: string) {
     const { error } = await supabase
       .from('accounts')
-      .update({ is_deleted: true, deleted_at: new Date().toISOString(), current_balance: 0, available_balance: 0 })
+      .update({ is_deleted: true, deleted_at: new Date().toISOString() })
       .eq('id', id);
     
     if (error) {
       toast.error('Failed to delete account');
     } else {
-      toast.success('Account deleted');
+      toast.success('Account archived; history retained');
       fetchAccounts();
     }
   }
@@ -382,7 +382,10 @@ export default function Accounts() {
   const renderAccountCard = (account: Account, isLinked: boolean) => {
     const Icon = accountTypeIcons[account.type as keyof typeof accountTypeIcons] || Wallet;
     const isDebt = account.type === 'credit' || account.type === 'loan';
-    const ownershipPct = getOwnershipPct(account);
+    const displayDate=format(new Date(),'yyyy-MM-dd');
+    const root=continuity.find(c=>c.source_id===account.id&&c.starts_on<=displayDate)?.original_id;
+    const logical=householdData.accounts.find(a=>a.id===(root||account.id));
+    const ownershipPct = logical?Number((accountDisplayWeight(logical,householdData,user?.id||'',householdPartnerId,displayDate)*100).toFixed(2)):100;
     const scaledBalance = account.current_balance * (ownershipPct / 100);
 
     return (
@@ -429,6 +432,8 @@ export default function Accounts() {
               variant="ghost"
               size="icon"
               className="opacity-0 group-hover:opacity-100 transition-opacity"
+              aria-label="Archive account and keep history"
+              title="Archive account and keep history"
               onClick={() => deleteAccount(account.id)}
             >
               <Trash2 className="w-4 h-4 text-destructive" />
@@ -464,99 +469,20 @@ export default function Accounts() {
                 if (account.is_manual && !account.is_zero_balance) { e.stopPropagation(); startEditingBalance(account); }
               }}
             >
-              {formatCurrency(account.is_zero_balance ? 0 : (account.is_joint ? scaledBalance : account.current_balance))}
+              {householdLoading?'Loading share…':householdError?'Share unavailable':formatCurrency(account.is_zero_balance ? 0 : scaledBalance,account.currency||'USD')}
               {account.is_manual && !account.is_zero_balance && <Pencil className="w-3 h-3 opacity-0 group-hover/balance:opacity-100 transition-opacity" />}
             </p>
           )}
-          {account.is_joint && (
+          {ownershipPct!==100 && (
             <p className="text-xs text-muted-foreground mt-1">
-              {ownershipPct}% of {formatCurrency(account.current_balance)}
+              {ownershipPct}% of {formatCurrency(account.current_balance,account.currency||'USD')}
             </p>
           )}
-          {account.mask && !account.is_joint && (
+          {account.mask && (
             <p className="text-sm text-muted-foreground mt-1">••••{account.mask}</p>
           )}
 
-          {/* Joint account controls */}
-          {partner && (
-            <div className="mt-3 pt-3 border-t space-y-2" onClick={e => e.stopPropagation()}>
-              <div className="flex items-center justify-between">
-                <Label htmlFor={`joint-${account.id}`} className="text-xs flex items-center gap-1 cursor-pointer">
-                  <Users className="w-3 h-3" />
-                  Joint with {partner.partner_name}
-                </Label>
-                <Switch
-                  id={`joint-${account.id}`}
-                  checked={account.is_joint}
-                  onCheckedChange={() => toggleJoint(account)}
-                />
-              </div>
-              {account.is_joint && (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Label className="text-xs text-muted-foreground whitespace-nowrap">My share:</Label>
-                    <Select
-                      value={account.ownership_pct != null ? String(account.ownership_pct) : 'default'}
-                      onValueChange={(v) => updateOwnershipPct(account.id, v)}
-                    >
-                      <SelectTrigger className="h-7 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="default">Default ({partner.default_ownership_pct}%)</SelectItem>
-                        <SelectItem value="25">25%</SelectItem>
-                        <SelectItem value="33">33%</SelectItem>
-                        <SelectItem value="40">40%</SelectItem>
-                        <SelectItem value="50">50%</SelectItem>
-                        <SelectItem value="60">60%</SelectItem>
-                        <SelectItem value="67">67%</SelectItem>
-                        <SelectItem value="75">75%</SelectItem>
-                        <SelectItem value="100">100%</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Label className="text-xs text-muted-foreground whitespace-nowrap">Start:</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" className={cn("h-7 text-xs justify-start flex-1", !account.joint_start_date && "text-muted-foreground")}>
-                          <CalendarIcon className="w-3 h-3 mr-1" />
-                          {account.joint_start_date ? format(parseISO(account.joint_start_date), 'MMM d, yyyy') : 'Set date'}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={account.joint_start_date ? parseISO(account.joint_start_date) : undefined}
-                          onSelect={(d) => updateJointDate(account.id, 'joint_start_date', d)}
-                          className={cn("p-3 pointer-events-auto")}
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Label className="text-xs text-muted-foreground whitespace-nowrap">End:</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" className={cn("h-7 text-xs justify-start flex-1", !account.joint_end_date && "text-muted-foreground")}>
-                          <CalendarIcon className="w-3 h-3 mr-1" />
-                          {account.joint_end_date ? format(parseISO(account.joint_end_date), 'MMM d, yyyy') : 'None'}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={account.joint_end_date ? parseISO(account.joint_end_date) : undefined}
-                          onSelect={(d) => updateJointDate(account.id, 'joint_end_date', d)}
-                          className={cn("p-3 pointer-events-auto")}
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+          <p className="text-sm text-muted-foreground mt-3">My balance share today: {householdLoading||householdError?'Unavailable':ownershipPct+'%'} · {account.user_id===user?.id&&isEnabled('household')?<Link className="underline" to={`/household?account=${encodeURIComponent(account.id)}#splits`} onClick={e=>e.stopPropagation()}>Set this account’s transaction split</Link>:<span>{account.user_id===user?.id?'Saved dated splits remain active. Enable Household to edit them.':'The person who connected this account manages its transaction split.'}</span>}</p>
           {/* Zero balance toggle for manual accounts */}
           {account.is_manual && (
             <div className={`${partner ? '' : 'mt-3 pt-3 border-t'} space-y-2`} onClick={e => e.stopPropagation()}>
@@ -609,132 +535,50 @@ export default function Accounts() {
 
   return (
     <AppLayout>
+
       <PageHeader
         title="Accounts"
         description="Manage your bank accounts and balances"
         actions={
           <div className="flex gap-2">
-            {/* Partner Setup */}
-            <Dialog open={partnerDialogOpen} onOpenChange={setPartnerDialogOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline">
-                  <Users className="w-4 h-4 mr-2" />
-                  {partner ? partner.partner_name : 'Add Partner'}
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle className="flex items-center gap-2">
-                    <Users className="w-5 h-5 text-primary" />
-                    {partner ? 'Edit Partner' : 'Add Partner'}
-                  </DialogTitle>
-                </DialogHeader>
-
-                {/* Show linked partner info when active */}
-                {isLinkedPartner && partner && (
-                  <div className="rounded-lg border bg-muted/50 p-4 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Linked Partner</span>
-                      <Badge variant="secondary" className="gap-1">
-                        <Link2 className="w-3 h-3" /> Active
-                      </Badge>
-                    </div>
-                    <p className="text-lg font-semibold">{linkedDisplayName}</p>
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <span>Your default share:</span>
-                      <span className="font-medium text-foreground">{partner.default_ownership_pct}%</span>
-                      <span>·</span>
-                      <span>Partner:</span>
-                      <span className="font-medium text-foreground">{100 - partner.default_ownership_pct}%</span>
-                    </div>
-                  </div>
-                )}
-
-                <form onSubmit={savePartner} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Partner Name</Label>
-                    <Input
-                      placeholder="e.g., Alex"
-                      value={partnerForm.partner_name}
-                      onChange={(e) => setPartnerForm({ ...partnerForm, partner_name: e.target.value })}
-                      required
-                    />
-                    {isLinkedPartner && (
-                      <p className="text-xs text-muted-foreground">
-                        This is your label for your partner. Their account name is "{linkedDisplayName}".
-                      </p>
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <Label>My Default Ownership %</Label>
-                    <Input
-                      type="number"
-                      min="1"
-                      max="100"
-                      step="1"
-                      placeholder="50"
-                      value={partnerForm.default_ownership_pct}
-                      onChange={(e) => setPartnerForm({ ...partnerForm, default_ownership_pct: e.target.value })}
-                      required
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Your share of joint accounts. Can be overridden per account.
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button type="submit" className="flex-1">
-                      {partner ? 'Update' : 'Add'} Partner
-                    </Button>
-                    {partner && (
-                      <Button type="button" variant="destructive" onClick={removePartner}>
-                        Remove
-                      </Button>
-                    )}
-                  </div>
-                </form>
-              </DialogContent>
-            </Dialog>
-
+            <Button asChild variant="outline"><Link to="/investments">Investment balances</Link></Button>
+            {isEnabled('household')&&<Button asChild variant="outline"><Link to="/household"><Users className="w-4 h-4 mr-2" />Household</Link></Button>}
             {hasLinkedAccounts && (
               <>
                 <Button variant="outline" onClick={syncTransactions} disabled={syncing}>
                   <RefreshCw className={`w-4 h-4 mr-2 ${syncing ? 'animate-spin' : ''}`} />
                   Sync
                 </Button>
-                <Dialog open={reconnectDialogOpen} onOpenChange={(open) => {
-                  if (reconnecting) return;
-                  setReconnectDialogOpen(open);
-                  if (open) void loadConnections();
-                }}>
+                <Dialog open={reconnectDialogOpen} onOpenChange={setReconnectDialogOpen}>
                   <DialogTrigger asChild>
                     <Button variant="outline" className="text-warning border-warning/30 hover:bg-warning/10">
                       <Unlink className="w-4 h-4 mr-2" />
-                      Disconnect bank
+                      Reconnect
                     </Button>
                   </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
                       <DialogTitle className="flex items-center gap-2">
                         <AlertTriangle className="w-5 h-5 text-warning" />
-                        Disconnect a bank
+                        Reconnect Accounts
                       </DialogTitle>
                     </DialogHeader>
                     <div className="space-y-4">
                       <p className="text-sm text-muted-foreground">
-                        Only the selected bank will be disconnected. Your transaction history will be kept.
+                        This will disconnect all your linked bank accounts and prompt you to reconnect them with <strong>up to 2 years of transaction history</strong> (730 days).
                       </p>
-                      <select className="w-full rounded border bg-background p-2" aria-label="Bank to disconnect"
-                        value={selectedConnection} onChange={e => setSelectedConnection(e.target.value)} disabled={reconnecting}>
-                        <option value="">Choose a bank</option>
-                        {connections.map((bank, i) => <option key={bank.id} value={bank.id}>{bank.name} ({i + 1})</option>)}
-                      </select>
+                      <div className="bg-warning/10 border border-warning/30 rounded-lg p-3">
+                        <p className="text-sm text-foreground">
+                          <strong>Note:</strong> Your existing transactions will be preserved. Some banks may still limit historical data regardless of this setting.
+                        </p>
+                      </div>
                       <div className="flex gap-2 justify-end">
-                        <Button variant="outline" disabled={reconnecting} onClick={() => setReconnectDialogOpen(false)}>Cancel</Button>
-                        <Button onClick={disconnectBank} disabled={reconnecting || !selectedConnection}>
+                        <Button variant="outline" onClick={() => setReconnectDialogOpen(false)}>Cancel</Button>
+                        <Button onClick={reconnectAccounts} disabled={reconnecting}>
                           {reconnecting ? (
                             <><RefreshCw className="w-4 h-4 mr-2 animate-spin" />Disconnecting...</>
                           ) : (
-                            <><Unlink className="w-4 h-4 mr-2" />Disconnect bank</>
+                            <><Unlink className="w-4 h-4 mr-2" />Disconnect & Reconnect</>
                           )}
                         </Button>
                       </div>
@@ -743,12 +587,10 @@ export default function Accounts() {
                 </Dialog>
               </>
             )}
-            {plaidEnabled && (
-              <Button variant="outline" onClick={openPlaidLink} disabled={plaidLoading}>
-                <Link2 className="w-4 h-4 mr-2" />
-                {plaidLoading ? 'Loading...' : 'Connect Bank'}
-              </Button>
-            )}
+            <Button variant="outline" onClick={openPlaidLink} disabled={plaidLoading}>
+              <Link2 className="w-4 h-4 mr-2" />
+              {plaidLoading ? 'Loading...' : 'Connect Bank'}
+            </Button>
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
               <DialogTrigger asChild>
                 <Button><Plus className="w-4 h-4 mr-2" />Manual Account</Button>
@@ -799,6 +641,8 @@ export default function Accounts() {
         }
       />
 
+      <AccountHistory/>
+      <details className="mb-6 border rounded p-3"><summary>Data coverage</summary><DataCoverage/></details>
       <div className="mb-6">
         <ToggleGroup
           type="single"
@@ -826,17 +670,13 @@ export default function Accounts() {
         <Card>
           <CardContent className="py-12 text-center">
             <Building2 className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">{plaidEnabled ? 'Connect your bank' : 'Add your first account'}</h3>
-            <p className="text-muted-foreground mb-6">
-              {plaidEnabled ? 'Link your bank accounts for automatic syncing, or add accounts manually.' : 'Start tracking balances by adding an account manually.'}
-            </p>
+            <h3 className="text-lg font-medium mb-2">Connect your bank</h3>
+            <p className="text-muted-foreground mb-6">Link your bank accounts for automatic syncing, or add accounts manually.</p>
             <div className="flex gap-3 justify-center flex-wrap">
-              {plaidEnabled && (
-                <Button onClick={openPlaidLink} disabled={plaidLoading}>
-                  <Link2 className="w-4 h-4 mr-2" />
-                  Connect Bank
-                </Button>
-              )}
+              <Button onClick={openPlaidLink} disabled={plaidLoading}>
+                <Link2 className="w-4 h-4 mr-2" />
+                Connect Bank
+              </Button>
               <Button variant="outline" onClick={() => setDialogOpen(true)}>
                 <Plus className="w-4 h-4 mr-2" />
                 Add Manually
@@ -846,40 +686,7 @@ export default function Accounts() {
         </Card>
       ) : (
         <div className="space-y-8">
-          {(() => {
-            const calc = (filtered: Account[]) => {
-              const checking = filtered
-                .filter(a => a.type === 'checking' || ((a as any).type === 'depository' && a.subtype !== 'savings'))
-                .reduce((sum, a) => sum + (a.current_balance || 0), 0);
-              const credit = filtered
-                .filter(a => a.type === 'credit')
-                .reduce((sum, a) => sum + (a.current_balance || 0), 0);
-              return checking - credit;
-            };
-            const isLiquidityAccount = (a: Account) =>
-              a.type === 'checking' || ((a as any).type === 'depository' && a.subtype !== 'savings') || a.type === 'credit';
-            const personal = accounts.filter(a => isLiquidityAccount(a) && !a.is_joint);
-            const joint = accounts.filter(a => isLiquidityAccount(a) && a.is_joint);
-
-            return (
-              <div className="grid gap-4 md:grid-cols-2">
-                <StatCard
-                  title="Personal Liquidity"
-                  value={formatCurrency(calc(personal))}
-                  subtitle="Non-joint checking minus credit cards"
-                  icon={<Droplets className="w-5 h-5" />}
-                />
-                {joint.length > 0 && (
-                  <StatCard
-                    title="Joint Liquidity"
-                    value={formatCurrency(calc(joint))}
-                    subtitle="Joint checking minus credit cards"
-                    icon={<Users className="w-5 h-5" />}
-                  />
-                )}
-              </div>
-            );
-          })()}
+          {householdError?<p role="alert">Balance shares could not be loaded. <Button variant="outline" onClick={reloadHousehold}>Retry</Button></p>:householdLoading?<p role="status">Loading balance shares…</p>:<div className="grid gap-4 md:grid-cols-2">{liquidityByCurrency(householdData,user?.id||'',householdPartnerId,format(new Date(),'yyyy-MM-dd')).map(row=><div key={row.currency} className="contents"><StatCard title={`My liquidity · ${row.currency}`} value={formatCurrency(row.mine,row.currency)} subtitle="My dated share of checking minus credit cards" icon={<Droplets className="w-5 h-5"/>}/><StatCard title={`Household liquidity · ${row.currency}`} value={formatCurrency(row.household,row.currency)} subtitle="Included checking minus credit cards, counted once" icon={<Users className="w-5 h-5"/>}/></div>)}</div>}
           {linkedAccounts.length > 0 && (
             <div>
               <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">

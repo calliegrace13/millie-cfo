@@ -53,3 +53,4 @@ CREATE POLICY "Users can delete own health metrics"
 
 -- Index for fast date range queries
 CREATE INDEX idx_health_metrics_user_date ON public.daily_health_metrics(user_id, metric_date DESC);
+

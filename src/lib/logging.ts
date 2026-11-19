@@ -22,3 +22,4 @@ export const logInfo = (context: string, message: string): void => {
     console.info(`[${context}]`, message);
   }
 };
+

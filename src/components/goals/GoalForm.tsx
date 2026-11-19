@@ -150,3 +150,4 @@ export function GoalForm({ open, onOpenChange, goal, onSaved }: Props) {
     </Dialog>
   );
 }
+

@@ -413,3 +413,4 @@ function RecipeFormDialog({ recipe, onClose }: { recipe: Recipe | null; onClose:
     </DialogContent>
   );
 }
+

@@ -1,0 +1,15 @@
+import fs from 'node:fs';import assert from 'node:assert/strict';import ts from '../node_modules/typescript/lib/typescript.js';
+const code=ts.transpileModule(fs.readFileSync(new URL('../src/lib/pattern-assistance.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.ES2022,target:ts.ScriptTarget.ES2022}}).outputText;
+const {patternCandidates,patternInput,usablePatternDrafts}=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
+const g=(id,category,count=2)=>({id,label:id,category,count,mixed:false,transactions:[{name:'Merchant '+id,amount:900,account_id:'private-account',user_id:'private-owner',bank_token:'private-token'}]});
+const groups=[g('known','Food & Dining',20),g('unknown','Other',3),g('large','',50),g('edited','Other',80)];
+assert.deepEqual(patternCandidates(groups,[],id=>id==='edited').map(g=>g.id),['large','unknown']);
+assert.deepEqual(patternCandidates(groups,['large'],id=>id==='edited',true).map(g=>g.id),['known','unknown']);
+assert.equal(patternCandidates(Array.from({length:50},(_,n)=>g('g'+n,'Other'))).length,30);
+const input=patternInput(groups),encoded=JSON.stringify(input);
+for(const secret of ['private-account','private-owner','private-token','amount'])assert(!encoded.includes(secret),'Private account details are never sent');
+assert.equal(input.sources.length,4);assert(input.id);assert.notEqual(input.id,patternInput(groups).id);
+const results=[{id:'known',category:'Food & Dining'},{id:'unknown',category:'Other'},{id:'edited',category:'Shopping'},{id:'stale',category:'Groceries'},{id:'known',category:'Shopping'}];
+assert.deepEqual(usablePatternDrafts(results,groups,id=>id==='edited').map(p=>p.id),['known'],'Preserve manual drafts, exclude unknown and stale groups, and avoid duplicate application');
+assert.equal(groups[0].transactions[0].amount,900,'Suggestions never mutate source history');
+console.log('PASS unresolved-first AI batching, most-work prioritization, manual draft protection, minimal provider payload, unique request IDs, stale suggestions and read-only history. No paid calls.');

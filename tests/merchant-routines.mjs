@@ -1,0 +1,21 @@
+import fs from 'node:fs';import assert from 'node:assert/strict';import ts from '../node_modules/typescript/lib/typescript.js';
+const compile=name=>ts.transpileModule(fs.readFileSync(new URL('../supabase/functions/_shared/'+name+'.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.ES2022,target:ts.ScriptTarget.ES2022}}).outputText;
+const classifierUrl='data:text/javascript;base64,'+Buffer.from(compile('transaction-classifier')).toString('base64');
+const {merchantKey,classify}=await import(classifierUrl);
+const {merchantGroups}=await import('data:text/javascript;base64,'+Buffer.from(compile('merchant-routines').replace('./transaction-classifier.ts',classifierUrl)).toString('base64'));
+const a={id:'card',type:'credit',currency:'USD'},tx=(id,name,amount=20,extra={})=>({id,account_id:'card',user_id:'me',name,merchant_name:'Uber',amount,date:'2026-09-01',needs_review:true,classification_source:'auto',category:'Other',provider_metadata:{merchant_entity_id:'one-provider-entity'},...extra});
+assert.equal(merchantKey(tx('1','UBER *EATS')),'service:uber-eats');assert.equal(merchantKey(tx('1','UBEREATS')),'service:uber-eats');assert.equal(merchantKey(tx('1','UBER *TRIP')),'service:uber-rides');
+assert.equal(merchantKey(tx('1','UBER ONE')),null);assert.equal(merchantKey(tx('1','UBERONE')),null);assert.equal(merchantKey(tx('1','UBER FREIGHT')),null);
+assert.equal(merchantKey(tx('1','STARBUCKS STORE 123',6,{merchant_name:null,provider_metadata:{}})),'merchant:starbucks');
+assert.equal(merchantKey(tx('1','VENMO purchase',20,{merchant_name:'Venmo'})),null);
+assert.equal(merchantKey(tx('1','Cafe purchase',20,{merchant_name:'Café',provider_metadata:{}})),'merchant:caf');
+const input=[tx('1','UBER TRIP'),tx('2','UBER TRIP',30),tx('3','UBER TRIP',300),tx('4','UBER EATS'),tx('5','UBER EATS',25)];
+const groups=merchantGroups(input,[a]);assert.equal(groups.length,2);assert.equal(groups[0].count,3);assert.equal(groups[0].category,'Transportation');assert.equal(groups[1].category,'Food & Dining');assert.equal(groups[0].max_amount,90);assert.equal(groups[0].transactions.filter(t=>t.amount<=groups[0].max_amount).length,2);
+for(const patch of [{amount:-20},{pending:true},{classification_locked:true},{classification_source:'user'},{classification_source:'rule'},{needs_review:false},{linked_transfer_id:'x'},{is_one_time_expense:true},{is_amortized:true},{is_non_gaap_adjustment:true},{recognition_date:'2026-10-01'},{name:'Uber refund'},{name:'Uber card payment'},{category:'Income'},{provider_metadata:{primary:'TRANSFER_OUT'}}])assert.equal(merchantGroups([tx('a','Uber TRIP',20,patch),tx('b','Uber TRIP')],[a]).length,0,JSON.stringify(patch));
+const pref={merchant_key:'service:uber-rides',category:'Transportation',currency:'USD',auto_approve:true,max_amount:90};
+assert.equal(classify(tx('a','Uber TRIP'),a,[pref]).review,false);assert.equal(classify(tx('a','Uber TRIP',300),a,[pref]).review,true);assert.equal(classify(tx('a','Uber refund',-20),a,[pref]).review,true);
+assert.equal(classify(tx('a','Uber TRIP'),a,[{...pref,auto_approve:false}]).review,true);
+assert.equal(classify(tx('a','Uber TRIP',20,{is_amortized:true}),a,[pref]).review,true);
+assert.notEqual(classify(tx('a','Uber EATS'),a,[pref]).category,'Transportation');
+assert.equal(classify(tx('a','Uber TRIP',300),{...a,currency:'EUR'},[pref]).review,false); // another currency uses its own ordinary classifier, never this limit
+console.log('PASS: merchant/service separation, frequent-first groups, purchase-only scope, protected edits, typical amount limits, refunds and unusual purchase exceptions, pause and currency isolation.');

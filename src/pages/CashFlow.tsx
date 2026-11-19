@@ -60,12 +60,13 @@ export function CashFlowContent() {
   const [priorTransactions, setPriorTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [periodType, setPeriodType] = useState<PeriodType>('monthly');
   const [selectedPeriod, setSelectedPeriod] = useState(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
-  const { buildMultiplierMap } = useOwnership();
+  const { getTransactionMultiplier } = useOwnership();
 
   useEffect(() => {
     const now = new Date();
@@ -84,37 +85,42 @@ export function CashFlowContent() {
   }, [user, selectedPeriod, periodType]);
 
   async function fetchData() {
-    const { start, end } = getDateRange(selectedPeriod, periodType);
-    const priorPeriod = getPriorPeriod(selectedPeriod, periodType);
-    const { start: priorStart, end: priorEnd } = getDateRange(priorPeriod, periodType);
-
-    const [txRes, priorTxRes, accRes, offsets] = await Promise.all([
-      supabase.from('transactions').select('*').gte('date', start).lte('date', end),
-      supabase.from('transactions').select('*').gte('date', priorStart).lte('date', priorEnd),
-      supabase.from('accounts').select('*').or('is_deleted.is.null,is_deleted.eq.false'),
-      fetchTransactionOffsets(),
-    ]);
-
-    if (txRes.data) setTransactions(applyOffsets(txRes.data as Transaction[], offsets));
-    if (priorTxRes.data) setPriorTransactions(applyOffsets(priorTxRes.data as Transaction[], offsets));
-    if (accRes.data) setAccounts(accRes.data as Account[]);
-    setLoading(false);
+    setLoading(true); setError('');
+    try {
+      const range = getDateRange(selectedPeriod, periodType);
+      const prior = getDateRange(getPriorPeriod(selectedPeriod, periodType), periodType);
+      async function readRange(start: string, end: string) {
+        const rows: Transaction[] = [];
+        for (let from = 0; ; from += 1000) {
+          const result = await supabase.from('transactions').select('*').gte('date', start).lte('date', end).order('id').range(from, from + 999);
+          if (result.error) throw result.error;
+          rows.push(...result.data as Transaction[]);
+          if (result.data.length < 1000) return rows;
+        }
+      }
+      const [current, previous, accRes] = await Promise.all([readRange(range.start, range.end), readRange(prior.start, prior.end), supabase.from('accounts').select('*')]);
+      if (accRes.error) throw accRes.error;
+      setTransactions(current); setPriorTransactions(previous); setAccounts(accRes.data as Account[]);
+    } catch { setError('Cash flow could not be loaded. Please refresh to try again.'); }
+    finally { setLoading(false); }
   }
 
   if (authLoading) return <div className="min-h-screen flex items-center justify-center"><div className="animate-pulse">Loading...</div></div>;
   if (!user) return <Navigate to="/auth" replace />;
 
-  const multiplierMap = buildMultiplierMap(accounts);
-  const scaledAmount = (t: Transaction) => t.amount * (t.account_id ? (multiplierMap[t.account_id] ?? 1) : 1);
+  const cashIds = new Set(accounts.filter(a => a.type === 'checking' || a.type === 'savings').map(a => a.id));
+  const isCash = (t: Transaction) => !t.pending && !!t.account_id && cashIds.has(t.account_id);
+  const unassignedCount = transactions.filter(t => !t.pending && !t.account_id).length;
+  const scaledAmount = (t: Transaction) => t.amount * getTransactionMultiplier(t, accounts);
 
   // Exclude linked transfers (they net to 0) and group by cash flow type
-  const nonTransferTransactions = transactions.filter(t => !t.linked_transfer_id);
-  const priorNonTransferTransactions = priorTransactions.filter(t => !t.linked_transfer_id);
+  const nonTransferTransactions = transactions.filter(isCash);
+  const priorNonTransferTransactions = priorTransactions.filter(isCash);
   
   const operating = nonTransferTransactions.filter(t => t.cash_flow_type === 'operating');
-  const other = nonTransferTransactions.filter(t => t.cash_flow_type === 'other');
+  const other = nonTransferTransactions.filter(t => t.cash_flow_type !== 'operating');
   const priorOperating = priorNonTransferTransactions.filter(t => t.cash_flow_type === 'operating');
-  const priorOther = priorNonTransferTransactions.filter(t => t.cash_flow_type === 'other');
+  const priorOther = priorNonTransferTransactions.filter(t => t.cash_flow_type !== 'operating');
 
   const operatingCashFlow = operating.reduce((sum, t) => sum - scaledAmount(t), 0);
   const otherCashFlow = other.reduce((sum, t) => sum - scaledAmount(t), 0);
@@ -132,12 +138,9 @@ export function CashFlowContent() {
     .filter(t => t.amount < 0 && t.category === 'Income')
     .reduce((sum, t) => sum + Math.abs(scaledAmount(t)), 0);
 
-  const cashAccounts = accounts.filter(a => a.type === 'checking' || a.type === 'savings');
-  const endingCash = cashAccounts.reduce((sum, a) => sum + (a.current_balance || 0) * (multiplierMap[a.id] ?? 1), 0);
-  const beginningCash = endingCash - netCashFlow;
-
   const months = Array.from({ length: 12 }, (_, i) => {
     const d = new Date();
+    d.setDate(1);
     d.setMonth(d.getMonth() - i);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   });
@@ -219,7 +222,7 @@ export function CashFlowContent() {
     <>
       <PageHeader
         title="Cash Flow Statement"
-        description="Track cash movements by activity type"
+        description="Posted movements in checking and savings accounts"
         actions={
           <div className="flex gap-2">
             <Select value={periodType} onValueChange={(v) => setPeriodType(v as PeriodType)}>
@@ -252,40 +255,14 @@ export function CashFlowContent() {
         }
       />
 
-      {loading ? (
+      {error ? <p role="alert" className="text-red-700">{error}</p> : loading ? (
         <div className="animate-pulse text-muted-foreground">Loading cash flow...</div>
       ) : (
         <>
-          {/* Cash Flow Summary */}
-          <div className="grid gap-4 md:grid-cols-5 mb-8">
-            <Card className="text-center">
-              <CardContent className="py-4">
-                <p className="text-sm text-muted-foreground">Beginning</p>
-                <p className="text-xl font-bold">{formatCurrency(beginningCash)}</p>
-              </CardContent>
-            </Card>
-            <div className="hidden md:flex items-center justify-center">
-              <ArrowRight className="w-6 h-6 text-muted-foreground" />
-            </div>
-            <Card className="text-center">
-              <CardContent className="py-4">
-                <p className="text-sm text-muted-foreground">Net Change</p>
-                <p className={`text-xl font-bold ${netCashFlow >= 0 ? 'text-success' : 'text-destructive'}`}>
-                  {netCashFlow >= 0 ? '+' : ''}{formatCurrency(netCashFlow)}
-                </p>
-              </CardContent>
-            </Card>
-            <div className="hidden md:flex items-center justify-center">
-              <ArrowRight className="w-6 h-6 text-muted-foreground" />
-            </div>
-            <Card className="text-center">
-              <CardContent className="py-4">
-                <p className="text-sm text-muted-foreground">Ending</p>
-                <p className="text-xl font-bold">{formatCurrency(endingCash)}</p>
-              </CardContent>
-            </Card>
+          <div className="grid gap-4 sm:grid-cols-3 mb-6">
+            {[['Operating cash flow', operatingCashFlow], ['Other cash movements', otherCashFlow], ['Net cash change', netCashFlow]].map(([label, amount]) => <Card key={label}><CardContent className="py-6"><p className="text-sm text-muted-foreground mb-2">{label}</p><p className="text-3xl font-semibold tabular-nums">{formatCurrency(Number(amount))}</p></CardContent></Card>)}
           </div>
-
+          <p className="text-sm text-muted-foreground mb-6">Uses transaction dates and ownership shares. Includes the cash side of credit-card payments and transfers to investments; transfers between cash accounts net to zero when both sides are recorded. Credit-card purchases appear on the income statement. Historical opening and closing balances are not shown because dated balances are unavailable.{unassignedCount > 0 && (' ' + unassignedCount + ' transactions without an account are excluded.')}</p>
           {/* Detailed Statement */}
           <Card>
             <CardHeader>
@@ -426,3 +403,4 @@ export default function CashFlow() {
     </AppLayout>
   );
 }
+

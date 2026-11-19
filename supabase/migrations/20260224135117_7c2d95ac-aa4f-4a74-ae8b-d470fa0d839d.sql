@@ -15,3 +15,4 @@ ALTER TABLE public.cogs_categories ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users can view own cogs categories" ON public.cogs_categories FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "Users can insert own cogs categories" ON public.cogs_categories FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Users can delete own cogs categories" ON public.cogs_categories FOR DELETE USING (auth.uid() = user_id);
+

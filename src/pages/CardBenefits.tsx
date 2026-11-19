@@ -341,7 +341,7 @@ export function CardBenefitsContent() {
       totalRemaining: totalCreditValue - totalCreditUsed,
       unusedCount: unusedCredits.length,
       totalAnnualFees,
-      netValue: totalCreditValue - totalAnnualFees,
+      netValue: totalCreditUsed - totalAnnualFees,
     };
   }, [benefitAnalysis, cards]);
 
@@ -497,7 +497,7 @@ export function CardBenefitsContent() {
     <>
       <PageHeader
         title="Card Benefits"
-        description="Track and maximize your credit card benefits"
+        description="Track benefits used and fees. Template terms may be outdated; verify current issuer terms. Usage windows vary by benefit, so the fee comparison is not an annualized return."
         actions={
           <div className="flex gap-2">
             {untrackedAccounts.length > 0 && (
@@ -625,7 +625,7 @@ export function CardBenefitsContent() {
                     <DollarSign className="w-5 h-5 text-muted-foreground" />
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Net Value</p>
+                    <p className="text-sm text-muted-foreground">Tracked credits less annual fees</p>
                     <p className={`text-2xl font-bold ${stats.netValue >= 0 ? 'text-success' : 'text-destructive'}`}>
                       {formatCurrency(stats.netValue)}
                     </p>
@@ -969,3 +969,4 @@ export default function CardBenefits() {
     </AppLayout>
   );
 }
+

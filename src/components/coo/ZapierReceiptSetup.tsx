@@ -12,7 +12,7 @@ export function ZapierReceiptSetup() {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
 
-  const webhookUrl = new URL('/functions/v1/receipt-webhook', import.meta.env.VITE_SUPABASE_URL).toString();
+  const webhookUrl = `https://fpwmumpdnxgztgfscpwk.supabase.co/functions/v1/receipt-webhook`;
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
@@ -161,3 +161,4 @@ export function ZapierReceiptSetup() {
     </Dialog>
   );
 }
+

@@ -1,0 +1,9 @@
+import {useRef,useState} from 'react';import {useQuery,useQueryClient} from '@tanstack/react-query';import {supabase} from '@/integrations/supabase/client';import {useAuth} from './useAuth';
+export type FocusRecord={id:string;domain:'watchlists'|'recoveries';name:string;payload:any;revision:number;status:'active'|'archived'};
+export function useFocusService(domain:FocusRecord['domain']){
+ const {user}=useAuth(),qc=useQueryClient(),[saving,setSaving]=useState(false),pending=useRef<{signature:string;id:string}|null>(null),queryKey=['focus-service',user?.id,domain];
+ async function call(body:any){const r=await supabase.functions.invoke(domain==='watchlists'?'spending-watchlists':'expense-recoveries',{body:{version:1,...body}});if(r.error){let message='Workspace unavailable. Please retry.';try{message=(await r.error.context.json()).error||message;}catch{}throw Error(message);}return r.data;}
+ const q=useQuery({queryKey,enabled:!!user,queryFn:async()=>{const records:FocusRecord[]=[];for(let offset=0;offset<100000;offset+=200){const r=await call({action:'list',offset});records.push(...r.records);if(r.nextOffset==null)return records;}throw Error('Record limit reached');}});
+ async function save(record:Partial<FocusRecord>&{name:string;payload:any}){const body={action:'save',name:record.name,payload:record.payload,id:record.id||null,expected:record.revision??null,status:record.status||'active'},signature=JSON.stringify({owner:user?.id,...body});if(pending.current?.signature!==signature)pending.current={signature,id:crypto.randomUUID()};setSaving(true);try{const r=await call({...body,requestId:pending.current.id});pending.current=null;await qc.invalidateQueries({queryKey});return r.record;}finally{setSaving(false);}}
+ return {records:q.data||[],loading:q.isPending,error:q.error,retry:()=>q.refetch(),saving,save,history:async(id:string)=>(await call({action:'history',id})).history};
+}

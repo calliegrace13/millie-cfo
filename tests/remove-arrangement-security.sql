@@ -1,0 +1,25 @@
+BEGIN;
+CREATE TEMP TABLE remove_fixture AS SELECT user_id owner_id,partner_user_id partner_id,gen_random_uuid() a FROM partner_links WHERE status='active' LIMIT 1;
+GRANT SELECT ON remove_fixture TO authenticated;
+DO $$ BEGIN IF NOT EXISTS(SELECT 1 FROM remove_fixture) THEN RAISE EXCEPTION 'Active pair required';END IF;END $$;
+INSERT INTO accounts(id,user_id,name,type,currency) SELECT a,owner_id,'Remove rule fixture','checking','USD' FROM remove_fixture;
+SET LOCAL ROLE authenticated;
+DO $$ DECLARE f record;r finance_allocations;b finance_allocations;blocked boolean;BEGIN
+ SELECT * INTO f FROM remove_fixture;PERFORM set_config('request.jwt.claim.sub',f.owner_id::text,true);
+ PERFORM finance_transaction_history(f.a,current_date-20,100,50,true,'Remove fixture');
+ PERFORM finance_schedule(ARRAY[f.a],current_date+10,60,true,'Later fixture');
+ SELECT * INTO r FROM finance_allocations WHERE account_id=f.a AND effective_from=current_date-20;
+ SELECT * INTO b FROM finance_allocations WHERE account_id=f.a AND effective_from='0001-01-01';
+ blocked:=false;BEGIN PERFORM finance_remove_arrangement(b.id,to_jsonb(b));EXCEPTION WHEN raise_exception THEN blocked:=true;END;IF NOT blocked THEN RAISE EXCEPTION 'Baseline removed';END IF;
+ blocked:=false;BEGIN PERFORM finance_remove_arrangement(r.id,jsonb_build_object('owner_pct',99));EXCEPTION WHEN raise_exception THEN blocked:=true;END;IF NOT blocked THEN RAISE EXCEPTION 'Stale preview accepted';END IF;
+ PERFORM set_config('request.jwt.claim.sub',f.partner_id::text,true);
+ blocked:=false;BEGIN PERFORM finance_remove_arrangement(r.id,to_jsonb(r));EXCEPTION WHEN raise_exception THEN blocked:=true;END;IF NOT blocked THEN RAISE EXCEPTION 'Other owner removed rule';END IF;
+ PERFORM set_config('request.jwt.claim.sub',f.owner_id::text,true);
+ PERFORM finance_remove_arrangement(r.id,to_jsonb(r));
+ IF EXISTS(SELECT 1 FROM finance_allocations WHERE id=r.id) THEN RAISE EXCEPTION 'Rule remains';END IF;
+ IF NOT EXISTS(SELECT 1 FROM finance_allocations WHERE id=b.id) OR NOT EXISTS(SELECT 1 FROM finance_allocations WHERE account_id=f.a AND effective_from=current_date+10) THEN RAISE EXCEPTION 'Adjacent rules removed';END IF;
+ IF NOT EXISTS(SELECT 1 FROM finance_allocation_audit WHERE account_id=f.a AND operation='DELETE' AND rule->>'id'=r.id::text) THEN RAISE EXCEPTION 'Audit missing';END IF;
+END $$;
+RESET ROLE;
+ROLLBACK;
+SELECT 'PASS: past change removal, baseline protection, stale preview rejection, ownership, later rules and audit retention. Fixtures rolled back.' AS result;

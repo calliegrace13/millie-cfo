@@ -9,7 +9,7 @@ type ActiveRoleContextType = {
 const ActiveRoleContext = createContext<ActiveRoleContextType | undefined>(undefined);
 
 export function ActiveRoleProvider({ children }: { children: ReactNode }) {
-  const [activeRole, setActiveRole] = useState<MillieRole>('ceo');
+  const [activeRole, setActiveRole] = useState<MillieRole>('cfo');
 
   useEffect(() => {
     document.documentElement.setAttribute('data-role', activeRole);

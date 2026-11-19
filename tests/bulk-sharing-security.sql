@@ -1,0 +1,24 @@
+BEGIN;
+CREATE TEMP TABLE share_fixture AS SELECT user_id owner_id,partner_user_id partner_id,gen_random_uuid() a,gen_random_uuid() b,gen_random_uuid() c FROM partner_links WHERE status='active' LIMIT 1;
+GRANT SELECT ON share_fixture TO authenticated;
+DO $$ BEGIN IF NOT EXISTS(SELECT 1 FROM share_fixture) THEN RAISE EXCEPTION 'Active pair required';END IF;END $$;
+INSERT INTO accounts(id,user_id,name,type,currency) SELECT a,owner_id,'Bulk shared fixture','checking','USD' FROM share_fixture UNION ALL SELECT b,owner_id,'Bulk personal fixture','checking','USD' FROM share_fixture UNION ALL SELECT c,owner_id,'Bulk reconnect fixture','checking','USD' FROM share_fixture;
+SET LOCAL ROLE authenticated;
+DO $$ DECLARE f record;blocked boolean;BEGIN
+ SELECT * INTO f FROM share_fixture;PERFORM set_config('request.jwt.claim.sub',f.owner_id::text,true);
+ PERFORM finance_transaction_history(f.a,current_date-20,100,50,true,'Bulk fixture');
+ blocked:=false;BEGIN PERFORM finance_share_household_accounts(ARRAY[f.a,f.b],current_date-10,f.partner_id);EXCEPTION WHEN raise_exception THEN blocked:=true;END;
+ IF NOT blocked OR EXISTS(SELECT 1 FROM finance_account_sharing WHERE account_id IN(f.a,f.b) AND enabled) THEN RAISE EXCEPTION 'Personal account accepted or batch partially saved';END IF;
+ PERFORM finance_share_account(f.a,true,current_date-30,NULL);
+ PERFORM finance_link_account_history(f.a,f.c,current_date-5);
+ UPDATE accounts SET is_deleted=true WHERE id=f.a;
+ IF finance_share_household_accounts(ARRAY[f.a,f.c],current_date-10,f.partner_id)<>2 THEN RAISE EXCEPTION 'Continuity sources missing';END IF;
+ IF NOT EXISTS(SELECT 1 FROM finance_account_sharing WHERE account_id=f.a AND history_from=current_date-30 AND enabled) OR NOT EXISTS(SELECT 1 FROM finance_account_sharing WHERE account_id=f.c AND history_from=current_date-10 AND enabled) THEN RAISE EXCEPTION 'History dates not preserved';END IF;
+ blocked:=false;BEGIN PERFORM finance_share_household_accounts(ARRAY[f.a],current_date,f.owner_id);EXCEPTION WHEN raise_exception THEN blocked:=true;END;IF NOT blocked THEN RAISE EXCEPTION 'Stale partner accepted';END IF;
+ blocked:=false;BEGIN PERFORM finance_share_household_accounts(ARRAY[f.a,f.a],current_date,f.partner_id);EXCEPTION WHEN raise_exception THEN blocked:=true;END;IF NOT blocked THEN RAISE EXCEPTION 'Duplicate IDs accepted';END IF;
+ PERFORM set_config('request.jwt.claim.sub',f.partner_id::text,true);
+ blocked:=false;BEGIN PERFORM finance_share_household_accounts(ARRAY[f.a],current_date,f.owner_id);EXCEPTION WHEN raise_exception THEN blocked:=true;END;IF NOT blocked THEN RAISE EXCEPTION 'Cross-owner sharing accepted';END IF;
+END $$;
+RESET ROLE;
+ROLLBACK;
+SELECT 'PASS: atomic batch, personal exclusion, continuity sources, earlier visibility, expected partner and owner isolation; fixtures rolled back.' AS result;

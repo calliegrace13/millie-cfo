@@ -52,3 +52,4 @@ CREATE POLICY "Users can delete own goals" ON public.financial_goals FOR DELETE 
 
 -- Enable realtime for notifications
 ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications;
+

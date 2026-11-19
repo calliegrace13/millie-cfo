@@ -25,3 +25,4 @@ ALTER TABLE public.accounts
   ADD COLUMN is_joint BOOLEAN NOT NULL DEFAULT false,
   ADD COLUMN ownership_pct NUMERIC DEFAULT NULL;
 -- ownership_pct: NULL means use partner default, otherwise override per account
+

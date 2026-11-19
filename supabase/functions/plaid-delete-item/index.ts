@@ -1,16 +1,10 @@
-import { disconnectPlaidItem } from "../_shared/plaid-ledger.mjs";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { decode as decodeBase64 } from "https://deno.land/std@0.168.0/encoding/base64.ts";
 
 function isAllowedOrigin(origin: string): boolean {
-  if (!origin) return false;
-  const configuredOrigins = (Deno.env.get('PLAID_ALLOWED_ORIGINS') ?? '').split(',').map(value => value.trim());
-  if (configuredOrigins.includes(origin)) return true;
-  if (origin.startsWith('http://localhost:')) return true;
-  if (origin.endsWith('.lovableproject.com')) return true;
-  if (origin.endsWith('.lovable.app')) return true;
-  return false;
+  const allowed = (Deno.env.get('MILLIE_ALLOWED_ORIGINS') || '').split(',').map(x => x.trim()).filter(Boolean);
+  return allowed.includes(origin);
 }
 
 function getCorsHeaders(req: Request): Record<string, string> {
@@ -19,6 +13,8 @@ function getCorsHeaders(req: Request): Record<string, string> {
     'Access-Control-Allow-Origin': isAllowedOrigin(origin) ? origin : '',
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
     'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Vary': 'Origin',
   };
 }
 
@@ -32,7 +28,7 @@ async function decryptToken(encryptedToken: string): Promise<string> {
       throw new Error('TOKEN_ENCRYPTION_KEY must be configured - legacy unencrypted tokens cannot be processed');
     }
     // Log warning about legacy token for monitoring
-    console.warn('Legacy unencrypted token detected - should be migrated to encrypted format');
+
     return encryptedToken;
   }
 
@@ -72,7 +68,7 @@ async function decryptToken(encryptedToken: string): Promise<string> {
 
     return new TextDecoder().decode(decrypted);
   } catch (error) {
-    console.error('Decryption failed:', error);
+
     throw new Error('Failed to decrypt access token');
   }
 }
@@ -84,6 +80,9 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  if (req.method !== 'POST') return new Response(JSON.stringify({error:'Method not allowed'}), {status:405, headers:{...corsHeaders,'Content-Type':'application/json'}});
+  const requestOrigin = req.headers.get('origin');
+  if (requestOrigin && !isAllowedOrigin(requestOrigin)) return new Response(JSON.stringify({error:'Origin not allowed'}), {status:403, headers:{'Content-Type':'application/json'}});
   try {
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -93,7 +92,7 @@ serve(async (req) => {
 
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
     if (authError || !user) {
-      console.error('Auth error:', authError);
+
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -102,14 +101,13 @@ serve(async (req) => {
 
     const { item_id } = await req.json();
     
-    if (typeof item_id !== 'string' || !item_id) {
+    if (!item_id) {
       return new Response(JSON.stringify({ error: 'item_id is required' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    console.log(`Deleting Plaid item ${item_id} for user ${user.id}`);
 
     // Get the Plaid item to retrieve the access token
     const serviceClient = createClient(
@@ -119,14 +117,13 @@ serve(async (req) => {
 
     const { data: plaidItem, error: fetchError } = await serviceClient
       .from('plaid_items')
-      .select('access_token, id, disconnecting')
+      .select('access_token, id')
       .eq('item_id', item_id)
       .eq('user_id', user.id)
       .maybeSingle();
 
-    if (fetchError) throw fetchError;
-    if (!plaidItem) {
-      console.error('Failed to fetch Plaid item:', fetchError);
+    if (fetchError || !plaidItem) {
+
       return new Response(JSON.stringify({ error: 'Plaid item not found' }), {
         status: 404,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -138,7 +135,7 @@ serve(async (req) => {
     try {
       decryptedToken = await decryptToken(plaidItem.access_token);
     } catch (error) {
-      console.error('Failed to decrypt token:', error);
+
       return new Response(
         JSON.stringify({ error: 'Unable to decrypt bank connection. Please re-link your account.' }),
         {
@@ -156,38 +153,56 @@ serve(async (req) => {
         ? 'https://development.plaid.com' 
         : 'https://sandbox.plaid.com';
 
-    const ownership = { p_item: plaidItem.id, p_user: user.id };
-    await disconnectPlaidItem({
-      staged: plaidItem.disconnecting,
-      request: async (path: string) => {
-        const response = await fetch(`${plaidUrl}${path}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ client_id: Deno.env.get('PLAID_CLIENT_ID'),
-            secret: Deno.env.get('PLAID_SECRET'), access_token: decryptedToken }),
-        });
-        const result = await response.json();
-        if (!response.ok && !result.error_code) throw new Error(`Plaid HTTP ${response.status}`);
-        return result;
-      },
-      stage: async (accounts: unknown[]) => {
-        const { error } = await serviceClient.rpc('stage_plaid_disconnect', { ...ownership, p_accounts: accounts });
-        if (error) throw error;
-      },
-      finish: async () => {
-        const { error } = await serviceClient.rpc('finish_plaid_disconnect', ownership);
-        if (error) throw error;
-      },
+    const removeResponse = await fetch(`${plaidUrl}/item/remove`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client_id: Deno.env.get('PLAID_CLIENT_ID'),
+        secret: Deno.env.get('PLAID_SECRET'),
+        access_token: decryptedToken,
+      }),
     });
+
+    const removeData = await removeResponse.json();
+    
+    if (removeData.error_code) {
+
+      // Continue anyway - item might already be removed from Plaid
+    } else {
+
+    }
+
+    // Delete the Plaid item from our database
+    const { error: deleteItemError } = await serviceClient
+      .from('plaid_items')
+      .delete()
+      .eq('id', plaidItem.id);
+
+    if (deleteItemError) {
+
+    }
+
+    // Soft-delete associated accounts (keep transaction history)
+    const { error: deleteAccountsError } = await serviceClient
+      .from('accounts')
+      .update({ is_deleted: true, deleted_at: new Date().toISOString() })
+      .eq('user_id', user.id)
+      .not('plaid_account_id', 'is', null);
+
+    if (deleteAccountsError) {
+
+    }
+
 
     return new Response(JSON.stringify({ success: true }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error) {
-    console.error('Error deleting Plaid item:', error);
+
     return new Response(JSON.stringify({ error: 'Failed to delete Plaid item' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 });
+

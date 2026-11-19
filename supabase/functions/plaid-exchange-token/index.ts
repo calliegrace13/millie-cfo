@@ -1,21 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { encode as encodeBase64 } from "https://deno.land/std@0.168.0/encoding/base64.ts";
+import { encode as encodeBase64, decode as decodeBase64 } from "https://deno.land/std@0.168.0/encoding/base64.ts";
 
 // Check if origin is allowed - accepts all Lovable project domains
 function isAllowedOrigin(origin: string): boolean {
-  if (!origin) return false;
-  const configuredOrigins = (Deno.env.get('PLAID_ALLOWED_ORIGINS') ?? '').split(',').map(value => value.trim());
-  if (configuredOrigins.includes(origin)) return true;
-  
-  // Allow localhost for development
-  if (origin.startsWith('http://localhost:')) return true;
-  
-  // Allow all Lovable project domains (both preview and production)
-  if (origin.endsWith('.lovableproject.com')) return true;
-  if (origin.endsWith('.lovable.app')) return true;
-  
-  return false;
+  const allowed = (Deno.env.get('MILLIE_ALLOWED_ORIGINS') || '').split(',').map(x => x.trim()).filter(Boolean);
+  return allowed.includes(origin);
 }
 
 function getCorsHeaders(req: Request): Record<string, string> {
@@ -25,6 +15,8 @@ function getCorsHeaders(req: Request): Record<string, string> {
     'Access-Control-Allow-Origin': isAllowedOrigin(origin) ? origin : '',
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
     'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Vary': 'Origin',
   };
 }
 
@@ -48,6 +40,20 @@ function mapErrorToClient(error: unknown): string {
   }
   
   return 'An error occurred. Please try again later.';
+}
+
+// Validate and sanitize string input
+function sanitizeString(value: unknown, maxLength: number): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'string') return null;
+  return value.trim().slice(0, maxLength);
+}
+
+// Validate numeric input
+function sanitizeNumber(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  return Math.round(value * 100) / 100;
 }
 
 // Encrypt access token using AES-GCM
@@ -92,7 +98,7 @@ async function encryptToken(token: string): Promise<string> {
     
     return 'enc:' + encodeBase64(combined.buffer);
   } catch (error) {
-    console.error('Encryption failed:', error);
+
     throw new Error('Failed to encrypt access token');
   }
 }
@@ -104,6 +110,9 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  if (req.method !== 'POST') return new Response(JSON.stringify({error:'Method not allowed'}), {status:405, headers:{...corsHeaders,'Content-Type':'application/json'}});
+  const requestOrigin = req.headers.get('origin');
+  if (requestOrigin && !isAllowedOrigin(requestOrigin)) return new Response(JSON.stringify({error:'Origin not allowed'}), {status:403, headers:{'Content-Type':'application/json'}});
   try {
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -113,7 +122,7 @@ serve(async (req) => {
 
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
     if (authError || !user) {
-      console.error('Auth error:', authError);
+
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -173,7 +182,6 @@ serve(async (req) => {
         ? 'https://development.plaid.com' 
         : 'https://sandbox.plaid.com';
 
-    console.log(`Exchanging token for user ${user.id} - Institution: ${institutionName || 'unknown'}`);
 
     // Exchange public token for access token
     const exchangeResponse = await fetch(`${plaidUrl}/item/public_token/exchange`, {
@@ -189,7 +197,7 @@ serve(async (req) => {
     const exchangeData = await exchangeResponse.json();
     
     if (exchangeData.error_code) {
-      console.error('Plaid exchange error:', exchangeData);
+
       return new Response(JSON.stringify({ error: 'Unable to connect to bank. Please try again.' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -200,7 +208,7 @@ serve(async (req) => {
     
     // Encrypt the access token before storing
     const encryptedToken = await encryptToken(access_token);
-    console.log('Access token encrypted successfully');
+
 
     // Use service role to store the plaid item
     const supabaseAdmin = createClient(
@@ -209,16 +217,16 @@ serve(async (req) => {
     );
 
     // Store the Plaid item with encrypted token (using validated fields)
-    const { data: item, error: insertError } = await supabaseAdmin.from('plaid_items').insert({
+    const { error: insertError } = await supabaseAdmin.from('plaid_items').insert({
       user_id: user.id,
       item_id,
       access_token: encryptedToken,
       institution_id: institutionId || null,
       institution_name: institutionName || null,
-    }).select('id').single();
+    });
 
     if (insertError) {
-      console.error('Error storing plaid item:', insertError);
+
       return new Response(JSON.stringify({ error: 'Failed to store connection' }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -238,23 +246,150 @@ serve(async (req) => {
 
     const accountsData = await accountsResponse.json();
 
-    if (!accountsResponse.ok || !Array.isArray(accountsData.accounts)) {
-      throw new Error('Could not load linked accounts; retry from Sync');
-    }
-    const { error: accountsError } = await supabaseAdmin.rpc('attach_plaid_accounts', {
-      p_item: item.id, p_user: user.id, p_accounts: accountsData.accounts,
-    });
-    if (accountsError) throw accountsError;
+    if (accountsData.accounts) {
+      // Validate and sanitize account data
+      const validAccounts = accountsData.accounts
+        .filter((account: any) => {
+          if (!account.account_id || typeof account.account_id !== 'string') {
 
-    console.log('Token exchange completed successfully');
+            return false;
+          }
+          if (!account.name || typeof account.name !== 'string') {
+
+            return false;
+          }
+          if (!account.type || typeof account.type !== 'string') {
+
+            return false;
+          }
+          return true;
+        });
+
+      const plaidAccountIds = validAccounts.map((a: any) => sanitizeString(a.account_id, 100));
+      
+      // Check for existing accounts by plaid_account_id (including soft-deleted ones)
+      const { data: existingByPlaidId } = await supabaseAdmin
+        .from('accounts')
+        .select('id, plaid_account_id, is_deleted, name, mask, type')
+        .eq('user_id', user.id)
+        .in('plaid_account_id', plaidAccountIds);
+      
+      const plaidIdMap = new Map(
+        (existingByPlaidId || []).map(a => [a.plaid_account_id, a])
+      );
+
+      const accountsToInsert = [];
+      const accountsToRestore: { id: string; [key: string]: any }[] = [];
+      const accountsToUpdate: { id: string; [key: string]: any }[] = [];
+      
+      for (const account of validAccounts) {
+        const plaidAccountId = sanitizeString(account.account_id, 100);
+        const name = sanitizeString(account.name, 200) || 'Unknown Account';
+        const type = sanitizeString(account.type, 50) || 'other';
+        const mask = sanitizeString(account.mask, 10);
+
+        // Stable provider IDs retain their existing history.
+        const existing = plaidIdMap.get(plaidAccountId) || null;
+        // New provider IDs are separate sources until the owner confirms continuity.
+        // A matching name / mask is a suggestion, never proof of identity.
+        
+        const accountData = {
+          plaid_account_id: plaidAccountId,
+          provider_institution_id: institutionId || null,
+          provider_institution_name: institutionName || null,
+          name,
+          official_name: sanitizeString(account.official_name, 200),
+          type,
+          subtype: sanitizeString(account.subtype, 50),
+          mask,
+          current_balance: sanitizeNumber(account.balances?.current),
+          available_balance: sanitizeNumber(account.balances?.available),
+          currency: sanitizeString(account.balances?.iso_currency_code, 3) || 'USD',
+          is_manual: false,
+        };
+        
+        if (existing) {
+          if (existing.is_deleted) {
+            // Restore the soft-deleted account and update balances + plaid_account_id
+            accountsToRestore.push({
+              id: existing.id,
+              ...accountData,
+              is_deleted: false,
+              deleted_at: null,
+            });
+          } else {
+            // Account exists and is active - update its plaid_account_id and balances
+            accountsToUpdate.push({
+              id: existing.id,
+              plaid_account_id: plaidAccountId,
+              current_balance: accountData.current_balance,
+              available_balance: accountData.available_balance,
+            });
+          }
+        } else {
+          // New account - insert it
+          accountsToInsert.push({
+            user_id: user.id,
+            ...accountData,
+          });
+        }
+      }
+      
+      // Insert new accounts
+      if (accountsToInsert.length > 0) {
+        const { error: accountsError } = await supabaseAdmin.from('accounts').insert(accountsToInsert);
+        if (accountsError) {
+
+        } else {
+
+        }
+      }
+      
+      // Restore soft-deleted accounts
+      for (const account of accountsToRestore) {
+        const { id, ...updateData } = account;
+        const { error: updateError } = await supabaseAdmin
+          .from('accounts')
+          .update(updateData)
+          .eq('id', id);
+        if (updateError) {
+
+        } else {
+
+        }
+      }
+
+      // Update existing active accounts (refresh plaid_account_id + balances)
+      for (const account of accountsToUpdate) {
+        const { id, ...updateData } = account;
+        const { error: updateError } = await supabaseAdmin
+          .from('accounts')
+          .update(updateData)
+          .eq('id', id);
+        if (updateError) {
+
+        } else {
+
+        }
+      }
+      
+      if (accountsToRestore.length > 0) {
+
+      }
+      if (accountsToUpdate.length > 0) {
+
+      }
+    }
+
     return new Response(JSON.stringify({ success: true }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error) {
-    console.error('Error exchanging token:', error);
+
     return new Response(JSON.stringify({ error: mapErrorToClient(error) }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 });
+

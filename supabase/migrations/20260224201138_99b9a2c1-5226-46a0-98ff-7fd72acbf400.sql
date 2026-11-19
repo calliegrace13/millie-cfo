@@ -23,3 +23,4 @@ CREATE POLICY "Users can update own gifts" ON public.gifts FOR UPDATE USING (aut
 CREATE POLICY "Users can delete own gifts" ON public.gifts FOR DELETE USING (auth.uid() = user_id);
 
 CREATE TRIGGER update_gifts_updated_at BEFORE UPDATE ON public.gifts FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+

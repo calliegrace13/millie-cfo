@@ -1,0 +1,2 @@
+import {Table,TableHeader,TableHead,TableRow,TableBody,TableCell} from '@/components/ui/table';
+export function FinanceTable({headers,rows}:{headers:string[];rows:any[][]}){return <div className="overflow-x-auto"><Table><TableHeader><TableRow>{headers.map(h=><TableHead key={h}>{h}</TableHead>)}</TableRow></TableHeader><TableBody>{rows.map((row,i)=><TableRow key={i}>{row.map((v,j)=><TableCell key={j} className={j?'tabular-nums':''}>{v}</TableCell>)}</TableRow>)}</TableBody></Table></div>}

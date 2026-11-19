@@ -157,3 +157,4 @@ CREATE POLICY "Users can insert own networking" ON public.networking_log FOR INS
 CREATE POLICY "Users can update own networking" ON public.networking_log FOR UPDATE USING (auth.uid() = user_id);
 CREATE POLICY "Users can delete own networking" ON public.networking_log FOR DELETE USING (auth.uid() = user_id);
 CREATE TRIGGER update_networking_log_updated_at BEFORE UPDATE ON public.networking_log FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+

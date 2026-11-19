@@ -1,3 +1,4 @@
+import {useModules} from '@/hooks/useModules';
 import { useState, useEffect } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { PageHeader } from '@/components/ui/page-header';
@@ -9,12 +10,13 @@ import { Button } from '@/components/ui/button';
 import { useSettings } from '@/hooks/useSettings';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
-import { Navigate } from 'react-router-dom';
+import { Navigate, Link } from 'react-router-dom';
 import { Users, User } from 'lucide-react';
 import { PartnerPairing } from '@/components/settings/PartnerPairing';
 import { toast } from 'sonner';
 
 export default function Settings() {
+ const {isEnabled}=useModules();
   const { user, loading: authLoading } = useAuth();
   const { showPartnerMode, setShowPartnerMode, loading } = useSettings();
   const [fullName, setFullName] = useState('');
@@ -73,36 +75,12 @@ export default function Settings() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="w-5 h-5" />
-                Partner Mode
-              </CardTitle>
-              <CardDescription>
-                Show joint account ownership percentages, partner-related columns, and budget scoping throughout the app.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between">
-                <Label htmlFor="partner-mode" className="flex-1">
-                  <span className="font-medium">Show partner mode</span>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    When disabled, joint ownership details will be hidden from all pages.
-                  </p>
-                </Label>
-                <Switch
-                  id="partner-mode"
-                  checked={showPartnerMode}
-                  onCheckedChange={setShowPartnerMode}
-                />
-              </div>
-            </CardContent>
-          </Card>
+          <Card><CardHeader><CardTitle>Customize Millie</CardTitle><CardDescription>Choose a preset or individual modules. Your financial history stays intact.</CardDescription></CardHeader><CardContent><Button asChild><Link to="/customize">Customize your workspace</Link></Button></CardContent></Card>
+          {isEnabled('household')&&<Card><CardHeader><CardTitle>Household finances</CardTitle><CardDescription>Manage your partner connection, dated splits, sharing, and monthly budgets in one place.</CardDescription></CardHeader><CardContent><Button asChild><Link to="/household">Open Household</Link></Button></CardContent></Card>}
 
-          {showPartnerMode && <PartnerPairing />}
         </div>
       )}
     </AppLayout>
   );
 }
+

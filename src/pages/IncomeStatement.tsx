@@ -115,7 +115,7 @@ function calculatePeriodData(
   multiplierMap: Record<string, number> = {},
   cogsCategories: Set<string> = new Set()
 ): PeriodData {
-  const getScaled = (t: Transaction) => t.amount * (t.account_id ? (multiplierMap[t.account_id] ?? 1) : 1);
+  const getScaled = (t: Transaction) => t.amount * (multiplierMap[t.id] ?? 1);
   // Split income by type - only count transactions with category 'Income'
   const incomeTransactions = transactions.filter(t => t.amount < 0 && t.category === 'Income');
   const salaryIncome = incomeTransactions
@@ -125,7 +125,7 @@ function calculatePeriodData(
     .filter(t => !isSalaryIncome(t))
     .reduce((sum, t) => sum + Math.abs(getScaled(t)), 0);
 
-  const expenseTransactions = transactions.filter(t => t.amount > 0);
+  const expenseTransactions = transactions.filter(t => t.category !== 'Income');
   const expenses = expenseTransactions.reduce((sum, t) => sum + getScaled(t), 0);
   const oneTimeExpenses = transactions.filter(t => t.is_one_time_expense && t.amount > 0).reduce((sum, t) => sum + getScaled(t), 0);
 
@@ -220,13 +220,13 @@ export function IncomeStatementContent() {
   const [allAmortizations, setAllAmortizations] = useState<AmortizationSchedule[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
-  const [periodType, setPeriodType] = useState<PeriodType>('yearly');
+  const [periodType, setPeriodType] = useState<PeriodType>('monthly');
   const [selectedPeriod, setSelectedPeriod] = useState(() => {
-    return String(new Date().getFullYear());
+    const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
   const [cogsCategories, setCogsCategories] = useState<string[]>([]);
   const [cogsDialogOpen, setCogsDialogOpen] = useState(false);
-  const { buildMultiplierMap } = useOwnership();
+  const { getTransactionMultiplier } = useOwnership();
 
   useEffect(() => {
     const now = new Date();
@@ -333,6 +333,7 @@ export function IncomeStatementContent() {
 
   // Filter transactions for each period (exclude linked transfers - they net to 0)
   const currentTransactions = allTransactions.filter(t => {
+    if (t.pending || t.category?.toLowerCase() === 'transfer') return false;
     if (t.is_amortized) return false;
     if (t.linked_transfer_id) return false; // Exclude transfers
     const recognitionDate = t.recognition_date || t.date;
@@ -340,13 +341,14 @@ export function IncomeStatementContent() {
   });
 
   const priorTransactions = allTransactions.filter(t => {
+    if (t.pending || t.category?.toLowerCase() === 'transfer') return false;
     if (t.is_amortized) return false;
     if (t.linked_transfer_id) return false; // Exclude transfers
     const recognitionDate = t.recognition_date || t.date;
     return recognitionDate >= priorStart && recognitionDate <= priorEnd;
   });
 
-  const multiplierMap = buildMultiplierMap(accounts);
+  const multiplierMap = Object.fromEntries(allTransactions.map(t => [t.id, getTransactionMultiplier(t, accounts)]));
 
   const cogsSet = new Set(cogsCategories);
   const current = calculatePeriodData(currentTransactions, allAmortizations, currentStartDate, currentEndDate, multiplierMap, cogsSet);
@@ -355,6 +357,7 @@ export function IncomeStatementContent() {
   // Generate period options
   const months = Array.from({ length: 24 }, (_, i) => {
     const d = new Date();
+    d.setDate(1);
     d.setMonth(d.getMonth() - i);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   });
@@ -786,3 +789,4 @@ export default function IncomeStatement() {
     </AppLayout>
   );
 }
+

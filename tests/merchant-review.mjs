@@ -1,0 +1,14 @@
+import fs from 'node:fs';import assert from 'node:assert/strict';import ts from '../node_modules/typescript/lib/typescript.js';
+const source=ts.transpileModule(fs.readFileSync(new URL('../src/lib/merchant-review.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.ES2022,target:ts.ScriptTarget.ES2022}}).outputText;
+const {isAmazonPurchase,amazonEvidence,reviewSnapshot}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+for(const name of ['AMZN Mktp US *ORDER123','Amazon Marketplace','AMZNMktp US','Amazon Fresh','Amazon Prime','AMZN Digital'])assert.equal(isAmazonPurchase({name}),true,name);
+for(const name of ['MTA','Amazonas Cafe','Market groceries','Netflix'])assert.equal(isAmazonPurchase({name}),false,name);
+assert.equal(amazonEvidence({name:'AMZN Mktp US'}).lane,'unknown');
+assert.equal(amazonEvidence({name:'AMAZON FRESH'}).lane,'grocery');
+assert.equal(amazonEvidence({name:'Amazon Grocery Subscri'}).lane,'grocery');
+assert.match(amazonEvidence({name:'Amazon Grocery Subscri'}).detail,/service fee/);
+assert.equal(amazonEvidence({name:'Amazon Prime membership'}).lane,'digital');
+assert.equal(amazonEvidence({name:'AMZN Mktp US',category:'Groceries'}).lane,'unknown');
+const transaction={id:'a',updated_at:'stamp',amount:12,date:'2026-10-21',account_id:'b',category:'Shopping',notes:'sensitive notes'};
+assert.deepEqual(reviewSnapshot(transaction),{id:'a',updated_at:'stamp',amount:12,date:'2026-10-21',account_id:'b',category:'Shopping'});
+console.log('PASS: Amazon descriptor detection, evidence rather than item guesses, service separation, and minimal immutable preview snapshots.');

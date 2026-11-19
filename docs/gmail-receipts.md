@@ -1,0 +1,25 @@
+# Gmail receipt syncing
+The receipt-email service owns inbox authorization, encrypted credentials and receipt queues. It never posts financial transactions or calls AI. ReceiptAssistant uses the existing matching and approval services after the user explicitly chooses receipt text.
+
+## Owner setup
+1. Create a Google Cloud project, enable Gmail API, and configure Google Auth Platform for a web application.
+2. Request only https://www.googleapis.com/auth/gmail.readonly. This grants mailbox-wide read access; Millie limits its actual queries to receipt-related subjects and the selected date window. No send, modify, delete or mark-read operations exist.
+3. Add this exact authorized redirect URI: https://millie-cfo-callie.calliegrace13.chatgpt.site/gmail-callback.html
+4. Add intended testers to the consent screen. Public distribution requires Google's restricted-scope verification and may require a security assessment. Do not purchase services without explicit authorization. Testing-mode grants may require reconnection.
+5. Set GOOGLE_GMAIL_CLIENT_ID and GOOGLE_GMAIL_CLIENT_SECRET in Supabase Edge Function Secrets. Do not put secrets in frontend configuration, Git, chat, transactions or receipts. AI_CREDENTIAL_ENCRYPTION_KEY is already used as the encryption root; email uses separate authenticated-encryption contexts.
+6. GMAIL_APP_ORIGIN may override the default existing Millie production origin. It must be the exact trusted application origin; no client-supplied redirects are accepted. MILLIE_ALLOWED_ORIGINS controls browser access.
+7. Deploy the SQL migration and receipt-email function. Gateway JWT verification remains enabled for every API call, and the service verifies the signed-in user again. Google returns through a dedicated same-origin app entry. Its synchronous bootstrap removes the authorization response from the address bar before the deferred app runs, then resumes receipt review in the same document. Do not redirect from this entry to Transactions with a full-page navigation: private Sites access can fail on that second request. A no-referrer policy and CSP restrict resources to the app and its existing backend. The authenticated API exchanges the temporary response using expiring, owner-bound, single-use state and a server-held PKCE verifier.
+8. In Transactions → Match receipts, connect Gmail yourself, confirm Google's permissions, choose a date window and sync. Preview receipt text before explicitly submitting it to AI.
+
+## Behavior
+- One Gmail mailbox per Millie login. Nothing is shared with a household partner.
+- Trust AI uses one combined queue: prepared receipts first, then remaining selected Gmail messages. Message IDs preserve prepared edits and prevent the same message appearing twice. Identical source text from files, pasted receipts or Gmail is deduplicated within and across batches without another AI call. Successful batches clear only their completed inputs; a cap, stop or failure keeps unfinished prepared receipts and selections intact. The manual Add next batch action is hidden in Trust AI mode.
+- With Trust AI enabled, users can authorize one automatic run over their selected emails. Sequential batches keep the ten-email/50,000-character limits, recheck the authoritative rolling 24-hour request allowance before each batch, and use the existing atomic server quota reservation. Provider/model changes, billing errors, failed analysis or approvals stop the run without automatic retries. Stop/navigation finishes only the current batch. Selection IDs and pending request metadata are saved per user in tab session storage; email bodies and AI output are not persisted there. Resume reuses the pending request ID and server-cached result. Clear matches use the existing protected review RPC; exceptions remain available for manual review. Dollar budgets remain with the provider: Millie's limit is a request count, not a dollar guarantee. The app does not increase configured limits or run this workflow unattended.
+- At most 20 search results per sync, with resumable server-held pagination and exclusive expiring leases.
+- Optional sync runs only while receipt review is open and no more than once every six hours. This is not an always-on mailbox listener.
+- Email text is encrypted and expires after 30 days. Minimal mailbox/message IDs remain while connected to avoid re-importing expired or dismissed emails.
+- Only text/plain or sanitized text/html message parts are read. Attachments and tracking resources are never downloaded.
+- Disconnect removes local tokens, pending flows, cached emails and duplicate IDs; Google token revocation is attempted and any failure is disclosed. Confirmed financial classifications and held closes are untouched.
+- Email and receipt contents are untrusted evidence. Duplicate charges, mixed items, transfers, refunds and closed periods remain protected by the existing matcher and review service.
+
+Sources: https://developers.google.com/identity/protocols/oauth2/web-server and https://developers.google.com/workspace/gmail/api/auth/scopes.

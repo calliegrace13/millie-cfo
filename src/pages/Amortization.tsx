@@ -1,3 +1,4 @@
+import {AccountingWorkspace} from '@/components/AccountingWorkspace';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -197,70 +198,13 @@ export function AmortizationContent() {
       }
 
       toast.success(`Auto-amortized ${created} transaction${created !== 1 ? 's' : ''} over 12 months`);
-      await ensureYearlyBudgets();
+
       fetchData();
     } catch (err) {
       console.error('Auto-amortize failed', err);
       toast.error('Auto-amortize failed');
     } finally {
       setProcessing(false);
-    }
-  }
-
-  async function ensureYearlyBudgets() {
-    if (!user || autoAmortizeCategories.length === 0) return;
-
-    // Check existing budgets
-    const { data: existingBudgets } = await supabase.from('budgets').select('category, period');
-    const existingYearly = new Set(
-      (existingBudgets || [])
-        .filter((b: any) => b.period === 'yearly')
-        .map((b: any) => b.category.toLowerCase())
-    );
-
-    const COLORS = ['#3b82f6', '#8b5cf6', '#22c55e', '#f59e0b', '#ef4444', '#06b6d4', '#ec4899'];
-
-    // Get last 12 months of spending to calculate suggested limits
-    const yearAgo = new Date();
-    yearAgo.setFullYear(yearAgo.getFullYear() - 1);
-    const yearAgoStr = `${yearAgo.getFullYear()}-${String(yearAgo.getMonth() + 1).padStart(2, '0')}-01`;
-
-    const { data: yearTx } = await supabase.from('transactions').select('category, amount')
-      .eq('user_id', user.id)
-      .gt('amount', 0)
-      .gte('date', yearAgoStr);
-
-    let budgetsCreated = 0;
-    for (const cat of autoAmortizeCategories) {
-      if (existingYearly.has(cat.toLowerCase())) continue;
-
-      // Also skip if a monthly budget exists for this category
-      const hasExisting = (existingBudgets || []).some(
-        (b: any) => b.category.toLowerCase() === cat.toLowerCase()
-      );
-      if (hasExisting) continue;
-
-      // Calculate yearly spend
-      const catSpend = (yearTx || [])
-        .filter((t: any) => t.category?.toLowerCase() === cat.toLowerCase())
-        .reduce((sum: number, t: any) => sum + t.amount, 0);
-
-      // Set budget at 15% above actual spend, rounded to nearest $100, minimum $500
-      const suggestedLimit = Math.max(500, Math.ceil((catSpend * 1.15) / 100) * 100);
-
-      const { error } = await supabase.from('budgets').insert({
-        user_id: user.id,
-        category: cat,
-        monthly_limit: suggestedLimit,
-        period: 'yearly',
-        color: COLORS[budgetsCreated % COLORS.length],
-      });
-
-      if (!error) budgetsCreated++;
-    }
-
-    if (budgetsCreated > 0) {
-      toast.success(`Created ${budgetsCreated} yearly budget${budgetsCreated !== 1 ? 's' : ''}`);
     }
   }
 
@@ -298,7 +242,7 @@ export function AmortizationContent() {
                   <DialogTitle>Auto-Amortize Categories</DialogTitle>
                 </DialogHeader>
                 <p className="text-sm text-muted-foreground mb-2">
-                  Transactions in selected categories will be automatically amortized over 12 months and assigned yearly budgets.
+                  Transactions in selected categories will be automatically amortized over 12 months without changing your budget targets. Set explicit targets in Household.
                 </p>
                 {autoAmortizeCategories.length > 0 && (
                   <div className="flex flex-wrap gap-2 mb-4">
@@ -482,7 +426,8 @@ function ScheduleCard({ schedule, onDelete }: { schedule: AmortizationSchedule; 
 export default function Amortization() {
   return (
     <AppLayout>
-      <AmortizationContent />
+      <AccountingWorkspace /><details className="mt-8 border rounded-xl p-4"><summary className="cursor-pointer font-medium">Existing expense schedules (legacy)</summary><p className="text-sm my-3">Existing schedules still affect normalized income. They do not create the new linked balance-sheet plans. Avoid scheduling the same expense twice.</p><AmortizationContent /></details>
     </AppLayout>
   );
 }
+

@@ -3,18 +3,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // Check if origin is allowed - accepts all Lovable project domains
 function isAllowedOrigin(origin: string): boolean {
-  if (!origin) return false;
-  const configuredOrigins = (Deno.env.get('PLAID_ALLOWED_ORIGINS') ?? '').split(',').map(value => value.trim());
-  if (configuredOrigins.includes(origin)) return true;
-  
-  // Allow localhost for development
-  if (origin.startsWith('http://localhost:')) return true;
-  
-  // Allow all Lovable project domains (both preview and production)
-  if (origin.endsWith('.lovableproject.com')) return true;
-  if (origin.endsWith('.lovable.app')) return true;
-  
-  return false;
+  const allowed = (Deno.env.get('MILLIE_ALLOWED_ORIGINS') || '').split(',').map(x => x.trim()).filter(Boolean);
+  return allowed.includes(origin);
 }
 
 function getCorsHeaders(req: Request): Record<string, string> {
@@ -24,6 +14,8 @@ function getCorsHeaders(req: Request): Record<string, string> {
     'Access-Control-Allow-Origin': isAllowedOrigin(origin) ? origin : '',
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
     'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Vary': 'Origin',
   };
 }
 
@@ -53,6 +45,9 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  if (req.method !== 'POST') return new Response(JSON.stringify({error:'Method not allowed'}), {status:405, headers:{...corsHeaders,'Content-Type':'application/json'}});
+  const requestOrigin = req.headers.get('origin');
+  if (requestOrigin && !isAllowedOrigin(requestOrigin)) return new Response(JSON.stringify({error:'Origin not allowed'}), {status:403, headers:{'Content-Type':'application/json'}});
   try {
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -62,7 +57,7 @@ serve(async (req) => {
 
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
     if (authError || !user) {
-      console.error('Auth error:', authError);
+
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -76,7 +71,6 @@ serve(async (req) => {
         ? 'https://development.plaid.com' 
         : 'https://sandbox.plaid.com';
 
-    console.log(`Creating link token for user ${user.id} in ${plaidEnv} environment`);
 
     const response = await fetch(`${plaidUrl}/link/token/create`, {
       method: 'POST',
@@ -98,7 +92,7 @@ serve(async (req) => {
     const data = await response.json();
     
     if (data.error_code) {
-      console.error('Plaid error:', data);
+
       // Return generic error for Plaid errors
       return new Response(JSON.stringify({ error: 'Unable to connect to bank. Please try again.' }), {
         status: 400,
@@ -106,15 +100,15 @@ serve(async (req) => {
       });
     }
 
-    console.log('Link token created successfully');
     return new Response(JSON.stringify({ link_token: data.link_token }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error) {
-    console.error('Error creating link token:', error);
+
     return new Response(JSON.stringify({ error: mapErrorToClient(error) }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 });
+

@@ -106,3 +106,4 @@ export function AIHabitSuggestions({ spendingSummary, monthlyTrends, topMerchant
     </div>
   );
 }
+

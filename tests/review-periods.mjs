@@ -1,0 +1,17 @@
+import fs from 'node:fs';import assert from 'node:assert/strict';import ts from '../node_modules/typescript/lib/typescript.js';
+const code=ts.transpileModule(fs.readFileSync('supabase/functions/_shared/review-periods.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.ES2022,target:ts.ScriptTarget.ES2022}}).outputText;
+const {closedForReview,quarterBounds,reviewQuarters}=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
+const t={id:'t',account_id:'a',user_id:'me',date:'2024-02-29',needs_review:true,pending:false};
+const close={owner_id:'me',kind:'close',payload:{reviewScope:{version:1,ownerId:'me',start:'2024-01-01',end:'2024-03-31',accountIds:['a']}}};
+assert.equal(closedForReview(t,[close],'me'),true);
+assert.equal(closedForReview({...t,id:'late-import'},[close],'me'),true,'Backfill belongs to restatements');
+for(const patch of [{account_id:'new'},{date:'2024-04-01'},{user_id:'partner'}])assert.equal(closedForReview({...t,...patch},[close],'me'),false);
+assert.equal(closedForReview(t,[{...close,owner_id:'partner'}],'me'),false);
+const legacy={owner_id:'me',kind:'close',payload:{options:{basis:'recorded'},lines:[{id:'t'}],snapshot:{transactions:[{...t,id:'unrelated'}]}}};
+assert.equal(closedForReview(t,[legacy],'me'),true);assert.equal(closedForReview({...t,id:'unrelated'},[legacy],'me'),false);
+assert.equal(closedForReview(t,[{...legacy,payload:{...legacy.payload,options:{basis:'proforma'}}}],'me'),false);
+assert.deepEqual(quarterBounds('2024-02-29'),{start:'2024-01-01',end:'2024-03-31',label:'Q1 2024'});
+assert.deepEqual(quarterBounds('2025-12-31'),{start:'2025-10-01',end:'2025-12-31',label:'Q4 2025'});
+const q=reviewQuarters([t,{...t,id:'new',account_id:'new'},{...t,id:'next',date:'2024-04-01',needs_review:false},{...t,id:'pending',pending:true},{...t,user_id:'partner'}],[close],'me');
+assert.deepEqual(q.map(x=>[x.label,x.total,x.open,x.remaining]),[['Q1 2024',2,1,1],['Q2 2024',1,1,0]]);
+console.log('PASS: quarter boundaries, oldest-first ordering, account/user scope, pending exclusion, legacy close scope and backfill separation.');

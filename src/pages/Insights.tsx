@@ -120,7 +120,7 @@ export function InsightsContent() {
 
   return (
     <>
-      <PageHeader title="Spending Insights" description="Analyze patterns, optimize cards, and get AI-powered advice" />
+      <PageHeader title="Spending Insights" description="Understand your spending, subscriptions, and card benefits" />
 
       {loading ? (
         <div className="animate-pulse text-muted-foreground">Loading insights...</div>
@@ -132,7 +132,6 @@ export function InsightsContent() {
             <TabsTrigger value="subscriptions">Subscriptions</TabsTrigger>
             <TabsTrigger value="health">Health Score</TabsTrigger>
             <TabsTrigger value="cards">Card Optimizer</TabsTrigger>
-            <TabsTrigger value="ai">AI Summary</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview">
@@ -154,20 +153,6 @@ export function InsightsContent() {
           <TabsContent value="cards">
             <CardOptimizer cards={cards} benefits={benefits} categorySpending={categorySpending} />
           </TabsContent>
-
-          <TabsContent value="ai">
-            <div className="space-y-6">
-              <MonthlyFinancialSummary
-                spendingSummary={spendingSummary}
-                monthlyTrends={monthlyTrends}
-                topMerchants={topMerchants}
-                savingsRate={savingsRate}
-                totalIncome={recentMonths.income}
-                totalExpenses={recentMonths.expenses}
-              />
-              <AIHabitSuggestions spendingSummary={spendingSummary} monthlyTrends={monthlyTrends} topMerchants={topMerchants} savingsRate={savingsRate} healthScore={0} />
-            </div>
-          </TabsContent>
         </Tabs>
       )}
     </>
@@ -181,3 +166,4 @@ export default function Insights() {
     </AppLayout>
   );
 }
+

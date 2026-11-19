@@ -15,7 +15,7 @@ import { Account, Transaction, Budget } from '@/lib/types';
 import { BudgetAlerts } from '@/components/insights/BudgetAlerts';
 import { Navigate, Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { startOfYear, endOfYear, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, isWithinInterval, parseISO } from 'date-fns';
+import { startOfYear, endOfYear, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, isWithinInterval, parseISO, format } from 'date-fns';
 
 type Benefit = {
   id: string;
@@ -56,6 +56,7 @@ export default function Dashboard() {
   const [budgetTransactions, setBudgetTransactions] = useState<Transaction[]>([]);
   const [recentTxForBenefits, setRecentTxForBenefits] = useState<{ id: string; name: string; merchant_name: string | null; amount: number; date: string; category: string | null; account_id: string | null }[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const { buildMultiplierMap, getTransactionMultiplier } = useOwnership();
 
   useEffect(() => {
@@ -66,6 +67,7 @@ export default function Dashboard() {
 
   async function fetchData() {
     setLoading(true);
+    setLoadError(false);
     
     const [accountsRes, transactionsRes, reviewRes, benefitsRes, cardsRes, usageRes, benefitTxRes, budgetsRes, budgetTxRes] = await Promise.all([
       supabase.from('accounts').select('*').or('is_deleted.is.null,is_deleted.eq.false').order('created_at', { ascending: false }),
@@ -76,9 +78,10 @@ export default function Dashboard() {
       supabase.from('benefit_usage').select('*'),
       supabase.from('transactions').select('id, name, merchant_name, amount, date, category, account_id').order('date', { ascending: false }).limit(1000),
       supabase.from('budgets').select('*').eq('is_active', true),
-      supabase.from('transactions').select('*').gte('date', startOfMonth(new Date()).toISOString().split('T')[0]).order('date', { ascending: false }),
+      fetchReportTransactions(),
     ]);
 
+    if ([accountsRes, transactionsRes, reviewRes, benefitsRes, cardsRes, usageRes, benefitTxRes, budgetsRes, budgetTxRes].some(r => r.error)) setLoadError(true);
     if (accountsRes.data) setAccounts(accountsRes.data as Account[]);
     if (transactionsRes.data) setTransactions(transactionsRes.data as Transaction[]);
     if (reviewRes.data) setReviewTransactions(reviewRes.data as Transaction[]);
@@ -90,6 +93,19 @@ export default function Dashboard() {
     if (budgetTxRes.data) setBudgetTransactions(budgetTxRes.data as Transaction[]);
     
     setLoading(false);
+  }
+
+  async function fetchReportTransactions() {
+    const data: Transaction[] = [];
+    for (let from = 0; ; from += 1000) {
+      const result = await supabase.from('transactions').select('*')
+        .gte('date', format(startOfYear(new Date()), 'yyyy-MM-dd'))
+        .lte('date', format(endOfMonth(new Date()), 'yyyy-MM-dd'))
+        .order('date').order('id').range(from, from + 999);
+      if (result.error) return { data: null, error: result.error };
+      data.push(...result.data as Transaction[]);
+      if (result.data.length < 1000) return { data, error: null };
+    }
   }
 
   // Unused benefits analysis
@@ -179,6 +195,23 @@ export default function Dashboard() {
     return <Navigate to="/auth" replace />;
   }
 
+  if (loading) return <AppLayout><PageHeader title="Overview"/><p role="status" className="text-muted-foreground">Loading your finances…</p></AppLayout>;
+  if (loadError) return <AppLayout><PageHeader title="Overview"/><Card><CardContent className="p-6 space-y-4"><p>We couldn't load your finances. Try again before relying on the totals.</p><Button onClick={fetchData}>Try again</Button></CardContent></Card></AppLayout>;
+  if (accounts.length === 0 && transactions.length === 0) return (
+    <AppLayout>
+      <PageHeader title="Overview"description="Start with your accounts, then build your budget." />
+      <Card className="border-primary/25 mb-6"><CardContent className="p-6 sm:p-8">
+        <Wallet className="h-8 w-8 text-primary mb-4" />
+        <h2 className="text-xl font-semibold mb-2">Bring your finances into view</h2>
+        <p className="text-muted-foreground max-w-xl mb-6">Connect a bank or add an account manually. Your reports will fill in as transactions are added.</p>
+        <Button asChild><Link to="/accounts">Add your first account</Link></Button>
+      </CardContent></Card>
+      <div className="grid gap-4 md:grid-cols-3">
+        {[['1', 'Add accounts', 'Connect a bank or track balances manually.', '/accounts'], ['2', 'Review transactions', 'Check categories so your reports reflect your spending.', '/transactions'], ['3', 'Set a budget', 'Choose spending limits and compare them with actuals.', '/budgets']].map(([step,title,description,href]) => <Link key={step} to={href} className="rounded-xl border bg-card p-5 hover:border-primary focus-visible:ring-2 focus-visible:ring-ring"><span className="text-sm font-semibold text-primary">Step {step}</span><h2 className="text-lg font-semibold mt-2">{title}</h2><p className="text-sm text-muted-foreground mt-2">{description}</p></Link>)}
+      </div>
+    </AppLayout>
+  );
+
   const multiplierMap = buildMultiplierMap(accounts);
 
   const scaleBalance = (acc: Account) => acc.is_zero_balance ? 0 : (acc.current_balance || 0) * (multiplierMap[acc.id] ?? 1);
@@ -199,8 +232,9 @@ export default function Dashboard() {
     .filter(a => a.type === 'credit' || a.type === 'loan')
     .reduce((sum, acc) => sum + scaleBalance(acc), 0);
 
-  const thisMonthTransactions = transactions.filter(t => {
-    const txDate = new Date(t.date);
+  const thisMonthTransactions = budgetTransactions.filter(t => {
+    if (t.pending || t.linked_transfer_id) return false;
+    const txDate = parseISO(t.date);
     const now = new Date();
     return txDate.getMonth() === now.getMonth() && txDate.getFullYear() === now.getFullYear();
   });
@@ -214,16 +248,18 @@ export default function Dashboard() {
     .reduce((sum, t) => sum + Math.abs(scaleTxAmount(t)), 0);
 
   const expenses = thisMonthTransactions
-    .filter(t => t.amount > 0)
+    .filter(t => !['Income', 'Transfer', 'Credit Card Payment'].includes(t.category || ''))
     .reduce((sum, t) => sum + scaleTxAmount(t), 0);
 
   return (
     <AppLayout>
       <PageHeader 
-        title="Dashboard" 
-        description="Your financial overview at a glance"
+        title="Overview"
+        description="Your balances, spending, and next steps"
+        actions={<Button asChild variant="outline"><Link to="/transactions">Review transactions</Link></Button>}
       />
 
+      {transactions.length === 0 && <Card className="mb-6 border-primary/25"><CardContent className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4"><div><h2 className="font-semibold">No transactions yet</h2><p className="text-sm text-muted-foreground mt-1">Sync your bank or add transactions to start seeing income, spending, and budget comparisons.</p></div><Button asChild><Link to="/transactions">Add or sync transactions</Link></Button></CardContent></Card>}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
         <StatCard
           title="Net Worth"
@@ -243,7 +279,7 @@ export default function Dashboard() {
         <StatCard
           title="Accounts"
           value={accounts.length.toString()}
-          subtitle="Connected accounts"
+          subtitle="Linked and manual accounts"
           icon={<Wallet className="w-5 h-5" />}
         />
       </div>
@@ -262,7 +298,7 @@ export default function Dashboard() {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Income</p>
-                    <p className="text-xl font-bold">{formatCurrency(income)}</p>
+                    <p className="text-xl font-bold">{thisMonthTransactions.length ? formatCurrency(income) : '—'}</p>
                   </div>
                 </div>
               </div>
@@ -273,15 +309,15 @@ export default function Dashboard() {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Expenses</p>
-                    <p className="text-xl font-bold">{formatCurrency(expenses)}</p>
+                    <p className="text-xl font-bold">{thisMonthTransactions.length ? formatCurrency(expenses) : '—'}</p>
                   </div>
                 </div>
               </div>
               <div className="pt-4 border-t">
                 <div className="flex justify-between items-center">
-                  <span className="text-muted-foreground">Net Cash Flow</span>
+                  <span className="text-muted-foreground">Income minus expenses</span>
                   <span className={`text-xl font-bold ${income - expenses >= 0 ? 'text-success' : 'text-destructive'}`}>
-                    {formatCurrency(income - expenses)}
+                    {thisMonthTransactions.length ? formatCurrency(income - expenses) : '—'}
                   </span>
                 </div>
               </div>
@@ -291,7 +327,7 @@ export default function Dashboard() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Short-Term Liquidity</CardTitle>
+            <CardTitle className="text-lg">Cash after credit card debt</CardTitle>
           </CardHeader>
           <CardContent>
             {(() => {

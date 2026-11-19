@@ -23,3 +23,4 @@ CREATE POLICY "Users can insert own offsets"
 CREATE POLICY "Users can delete own offsets"
   ON public.transaction_offsets FOR DELETE
   USING (parent_transaction_id IN (SELECT id FROM public.transactions WHERE user_id = auth.uid()));
+

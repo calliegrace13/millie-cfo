@@ -39,3 +39,4 @@ export function useDemoSupabase() {
 
   return { supabase: client, isDemo };
 }
+

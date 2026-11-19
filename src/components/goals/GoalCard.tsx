@@ -126,3 +126,4 @@ export function GoalCard({ goal, monthlySavingsRate, onEdit, onAddFunds }: Props
     </Card>
   );
 }
+

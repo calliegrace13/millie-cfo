@@ -19,3 +19,4 @@ CREATE POLICY "Partners can delete joint events"
 ON public.events
 FOR DELETE
 USING (is_joint = true AND user_id = get_partner_user_id(auth.uid()));
+

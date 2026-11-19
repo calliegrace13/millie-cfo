@@ -9,6 +9,7 @@ type PartnerLink = {
   pairing_code: string;
   status: string;
   created_at: string;
+  expires_at?: string | null;
   linked_at: string | null;
 };
 
@@ -27,6 +28,7 @@ export function usePartnerLink() {
       .from('partner_links')
       .select('*')
       .or(`user_id.eq.${user.id},partner_user_id.eq.${user.id}`)
+      .in('status', ['active','pending'])
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -56,22 +58,14 @@ export function usePartnerLink() {
     setLoading(false);
   }, [user]);
 
-  useEffect(() => { fetchLink(); }, [fetchLink]);
+  useEffect(() => { fetchLink(); const onFocus=()=>{void fetchLink();}; window.addEventListener('focus',onFocus); return ()=>window.removeEventListener('focus',onFocus); }, [fetchLink]);
 
   const generateCode = async () => {
     if (!user) return null;
-    // Generate a 6-char alphanumeric code
-    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
-
-    const { data, error } = await supabase
-      .from('partner_links')
-      .insert({ user_id: user.id, pairing_code: code, status: 'pending' } as any)
-      .select()
-      .single();
-
+    const { data, error } = await (supabase as any).rpc('finance_invite');
     if (error) throw error;
     setPartnerLink(data as PartnerLink);
-    return code;
+    return data.pairing_code;
   };
 
   const redeemCode = async (code: string) => {
@@ -87,7 +81,8 @@ export function usePartnerLink() {
 
   const unlinkPartner = async () => {
     if (!partnerLink) return;
-    await supabase.from('partner_links').delete().eq('id', partnerLink.id);
+    const {error} = await (supabase as any).rpc('finance_unlink');
+    if(error) throw error;
     setPartnerLink(null);
     setPartnerEmail(null);
     setPartnerName(null);
@@ -95,3 +90,4 @@ export function usePartnerLink() {
 
   return { partnerLink, partnerEmail, partnerName, loading, generateCode, redeemCode, unlinkPartner, refetch: fetchLink };
 }
+

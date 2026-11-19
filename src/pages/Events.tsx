@@ -562,3 +562,4 @@ function TagTransactionsPanel({ event, transactions, accounts, taggedTxIds, onTa
     </div>
   );
 }
+

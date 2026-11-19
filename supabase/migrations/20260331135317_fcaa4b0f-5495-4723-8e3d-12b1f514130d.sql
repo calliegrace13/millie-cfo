@@ -58,3 +58,4 @@ CREATE POLICY "No direct delete to plaid items" ON public.plaid_items FOR DELETE
 CREATE POLICY "Users can update own cogs categories"
   ON public.cogs_categories FOR UPDATE
   USING (auth.uid() = user_id);
+

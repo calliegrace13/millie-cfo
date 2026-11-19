@@ -1,5 +1,10 @@
 {
-  "appId": "app.milliecfo.mobile",
-  "appName": "Millie CFO",
-  "webDir": "dist"
+  "appId": "app.lovable.8abaa7c6e8b4448aae4d244ce37d845f",
+  "appName": "milliecfo",
+  "webDir": "dist",
+  "server": {
+    "url": "https://8abaa7c6-e8b4-448a-ae4d-244ce37d845f.lovableproject.com?forceHideBadge=true",
+    "cleartext": true
+  }
 }
+

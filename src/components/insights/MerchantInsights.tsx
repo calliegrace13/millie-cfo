@@ -157,3 +157,4 @@ export function MerchantInsights({ transactions, accounts, getMultiplier }: Prop
     </div>
   );
 }
+

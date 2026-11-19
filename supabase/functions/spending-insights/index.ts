@@ -116,3 +116,4 @@ Analyze this data and suggest specific habit changes to improve my finances.`;
     });
   }
 });
+

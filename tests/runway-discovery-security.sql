@@ -1,0 +1,35 @@
+begin;
+create temp table rd as select user_id u,partner_user_id p,gen_random_uuid() a,gen_random_uuid() x,gen_random_uuid() y,gen_random_uuid() z from partner_links where status='active' limit 1;
+grant select on rd to authenticated;
+insert into accounts(id,user_id,name,type,currency,current_balance) select a,u,'Discovery validation fixture','checking','USD',1000 from rd;
+insert into transactions(id,user_id,account_id,name,date,amount,category) select x,u,a,'Fixture utility',current_date-90,30,'Utilities' from rd union all select y,u,a,'Fixture utility',current_date-60,30,'Utilities' from rd union all select z,u,a,'Fixture utility',current_date-30,30,'Utilities' from rd;
+set local role authenticated;
+do $$declare f record;expected jsonb;payload jsonb;blocked boolean;plan_id uuid;n integer;begin
+ select * into strict f from rd;perform set_config('request.jwt.claim.role','authenticated',true);perform set_config('request.jwt.claim.sub',f.u::text,true);
+ select coalesce(jsonb_object_agg(id::text,revision),'{}'::jsonb) into expected from finance_cash_plans where owner_id=f.u;
+ payload:=jsonb_build_array(jsonb_build_object('key','fixture:'||f.a,'account_id',f.a,'name','Fixture utility','amount',-30,'first_date',current_date+10,'frequency','monthly','evidence',jsonb_build_array(f.x,f.y,f.z),'last_date',current_date-30,'kind','Bill'));
+ n:=finance_accept_cash_suggestions(payload,expected);if n<>1 then raise exception 'Acceptance count incorrect';end if;
+ select id into strict plan_id from finance_cash_plans where owner_id=f.u and discovery_key='fixture:'||f.a;
+ if (select discovery_evidence->>'kind' from finance_cash_plans where id=plan_id)<>'Bill' then raise exception 'Evidence lost';end if;
+ blocked:=false;begin perform finance_accept_cash_suggestions(payload,expected);exception when raise_exception then blocked:=true;end;if not blocked then raise exception 'Stale second browser accepted same plan';end if;
+ select coalesce(jsonb_object_agg(id::text,revision),'{}'::jsonb) into expected from finance_cash_plans where owner_id=f.u;
+ blocked:=false;begin perform finance_accept_cash_suggestions(payload,expected);exception when unique_violation then blocked:=true;end;if not blocked then raise exception 'Same key accepted twice';end if;
+ update finance_cash_plans set status='archived' where id=plan_id;
+ blocked:=false;begin update finance_cash_plans set discovery_key='new-key' where id=plan_id;exception when raise_exception then blocked:=true;end;if not blocked then raise exception 'Identity evidence was editable';end if;
+ if (select count(*) from finance_plan_history where record_id=plan_id)<>2 then raise exception 'Audit history missing';end if;
+ select coalesce(jsonb_object_agg(id::text,revision),'{}'::jsonb) into expected from finance_cash_plans where owner_id=f.u;
+ blocked:=false;begin
+  perform finance_accept_cash_suggestions(jsonb_build_array(jsonb_set(payload->0,'{key}',to_jsonb('atomic-one:'||f.a)),jsonb_set(jsonb_set(payload->0,'{key}',to_jsonb('atomic-two:'||f.a)),'{amount}','0'::jsonb)),expected);
+ exception when check_violation then blocked:=true;end;
+ if not blocked or exists(select 1 from finance_cash_plans where discovery_key='atomic-one:'||f.a) then raise exception 'Part of an invalid batch was saved';end if;
+ perform set_config('request.jwt.claim.sub',f.p::text,true);
+ select coalesce(jsonb_object_agg(id::text,revision),'{}'::jsonb) into expected from finance_cash_plans where owner_id=f.p;
+ blocked:=false;begin perform finance_accept_cash_suggestions(payload,expected);exception when raise_exception then blocked:=true;end;if not blocked then raise exception 'Partner evidence accepted';end if;
+ if exists(select 1 from finance_cash_plans where id=plan_id) then raise exception 'Private plan disclosed';end if;
+end;$$;
+reset role;
+do $$begin if (select count(*) from transactions where account_id in(select a from rd))<>3 or exists(select 1 from transactions where account_id in(select a from rd) and amount<>30) then raise exception 'Historical evidence changed';end if;end;$$;
+set local role anon;
+do $$declare blocked boolean:=false;begin begin perform finance_accept_cash_suggestions('[]','{}');exception when insufficient_privilege then blocked:=true;end;if not blocked then raise exception 'Anonymous acceptance allowed';end if;end;$$;
+reset role;rollback;
+select 'PASS: atomic acceptance, stale browser rejection, unique discovery identity, immutable evidence, audit retention, private ownership and unchanged transactions. Fixtures rolled back.' as result;

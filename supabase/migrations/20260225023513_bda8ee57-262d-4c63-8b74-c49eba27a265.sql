@@ -11,3 +11,4 @@ USING (
   OR (auth.uid() = partner_user_id)
   OR (status = 'pending')
 );
+

@@ -33,3 +33,4 @@ WITH duplicate_groups AS (
 )
 DELETE FROM transactions 
 WHERE id IN (SELECT id FROM duplicate_groups WHERE rn > 1)
+

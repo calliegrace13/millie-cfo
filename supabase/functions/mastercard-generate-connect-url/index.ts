@@ -47,14 +47,8 @@ serve(async (req) => {
       throw new Error("Missing MASTERCARD_APP_KEY");
     }
 
-    const origin = Deno.env.get("MASTERCARD_APP_ORIGIN") || req.headers.get("origin");
-    if (!origin) {
-      return new Response(JSON.stringify({ error: "Missing application origin" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-    const redirectUri = new URL("/accounts", origin).toString();
+    const origin = req.headers.get("origin") || "https://8abaa7c6-e8b4-448a-ae4d-244ce37d845f.lovableproject.com";
+    const redirectUri = `${origin}/accounts`;
 
     console.log("Generating Connect URL for customer:", customerId, "redirect:", redirectUri);
 
@@ -101,3 +95,4 @@ serve(async (req) => {
     );
   }
 });
+

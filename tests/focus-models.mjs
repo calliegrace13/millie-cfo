@@ -1,0 +1,13 @@
+import fs from 'node:fs';import assert from 'node:assert/strict';import ts from '../node_modules/typescript/lib/typescript.js';
+const load=async p=>import('data:text/javascript;base64,'+Buffer.from(ts.transpileModule(fs.readFileSync(new URL(p,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.ES2022,target:ts.ScriptTarget.ES2022}}).outputText).toString('base64'));
+const {watchlistAnalysis,recoveryAnalysis}=await load('../src/lib/focus-models.ts');
+const accounts=[{id:'a',currency:'USD'},{id:'e',currency:'EUR'}],t={id:'buy',date:'2026-01-10',amount:100,account_id:'a',name:'Shop',category:'Shopping'},refund={...t,id:'refund',amount:-20},rows=[t,refund,{...t,id:'pending',pending:true},{...t,id:'fx',account_id:'e'},{...t,id:'transfer',linked_transfer_id:'other'},{...t,id:'pay',category:'Credit Card Payment'}],before=JSON.stringify(rows);
+const a=watchlistAnalysis({field:'category',value:'Shopping',currency:'USD',target:90},rows,accounts,'2026-01');assert.equal(a.spending,80);assert.equal(a.remaining,10);assert.equal(a.rows.length,2);assert.equal(JSON.stringify(rows),before);
+const p={expenseId:'buy',expenseSnapshot:t,expected:50,receivedIds:['refund'],receivedSnapshots:[refund]};assert.equal(recoveryAnalysis(p,rows).outstanding,30);assert.equal(recoveryAnalysis(p,[]).outstanding,30);assert.equal(recoveryAnalysis({...p,expected:10},rows).excess,10);assert.equal(recoveryAnalysis({...p,receivedIds:[]},rows).outstanding,50);
+const {receiptMatches}=await load('../supabase/functions/_shared/receipt-matching.ts'),r={source:0,merchant:'Starbucks',date:t.date,currency:'USD',amount:100,items:[{name:'Coffee',category:'Food & Dining'}]};
+assert(receiptMatches([r],[{...t,merchant_name:'Starbucks'},{...t,id:'wrong',merchant_name:'Target'}],accounts)[0].unique);assert(!receiptMatches([r],[{...t,merchant_name:'Target'}],accounts)[0].unique);
+console.log('PASS refunds, FX separation, movements, retained recovery history, no mutations and merchant-aware receipt matches.');
+
+const {receiptEligible}=await load('../supabase/functions/_shared/receipt-eligibility.ts');assert(receiptEligible({...t,category:'Other',classification_kind:'unknown',needs_review:true},{type:'credit'}));assert(!receiptEligible({...t,category:'Credit Card Payment',needs_review:true},{type:'credit'}));
+
+const pennies={expected:.3,receivedIds:['a','b'],receivedSnapshots:[{id:'a',amount:-.1},{id:'b',amount:-.2}]};assert.equal(recoveryAnalysis(pennies,[]).excess,0);assert.equal(recoveryAnalysis({...pennies,expected:.30000000000000004},[]).outstanding,0);console.log('PASS decimal repayment equality has no phantom overdue balance.');

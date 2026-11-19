@@ -1,0 +1,13 @@
+# CFO briefing
+
+Home is the same concise briefing in Manual and AI workspaces: financial picture, largest expense changes, prioritized next actions, and saved automatic work. Automatic work controls are available in an expandable section. All existing modules remain in the tool directory; no capability or permission was removed.
+
+`cfo-briefing.ts` is a pure read model over `accountingReport`, not another accounting engine or an LLM summary. Last month is the default. Current/last month and quarter, currency and personal/partner/household perspective are explicit. Completed periods compare actual calendar periods; current periods compare elapsed days capped at the comparison period end. Figures use reported, as-lived, current evidence from all eligible accounts. Analyst overlays and original closed editions remain separately labeled in their own workflows.
+
+Category drivers include disappearing categories and sum to the total expense change. Only the three largest are shown initially. Card payments, transfers, amortization and sharing use the canonical service. Empty periods are not savings. Changing account activity or sharing gets a comparison warning. Available history never claims certified bank completeness; dated cash/wealth bridge evidence is disclosed. Today's balances never fill historical gaps.
+
+Next actions combine reporting evidence with owner-private questions, ready proposals and failed work, initially limited to three. All follow-ups remain expandable. Open review counts exclude closed-period and other-owner transactions. Transaction links select the relevant review quarter. Supporting-report links set the same current period, currency, perspective and latest recorded scope, clearing stale saved groups or closed-edition selection. The supporting report uses the same prior calendar comparison. Users can subsequently change its comparison controls.
+
+Completed automation counts are distinct saved owner task IDs completed in the last seven days within the latest 200 tasks. They are not approved transaction counts. Answered questions are distinguished from unanswered questions. Unknown/error work and spending states are never displayed as successful or zero. Dollar usage includes reservations and follows existing UTC budget boundaries; opening the briefing does not invoke a model, run financial commands, start automation or change limits.
+
+Tests cover statement agreement, payment deduplication, calendar boundaries, missing evidence, lifecycle allocations, review locks, owner/currency isolation, retained accounts and honest checkpoint counting. Deployment needs only the frontend; existing database and service contracts are unchanged.

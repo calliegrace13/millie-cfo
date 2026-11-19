@@ -1,0 +1,6 @@
+import fs from 'node:fs';import ts from '../node_modules/typescript/lib/typescript.js';import assert from 'node:assert/strict';
+const s=ts.transpileModule(fs.readFileSync(new URL('../src/lib/receipt-import.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.ES2022,target:ts.ScriptTarget.ES2022}}).outputText.replace("'postal-mime'",JSON.stringify(new URL('../node_modules/postal-mime/src/postal-mime.js',import.meta.url).href));
+const {receiptFileText}=await import('data:text/javascript;base64,'+Buffer.from(s).toString('base64'));
+const html='<html><body><img src="https://example.invalid/track" alt="Paper towels"><p>Grand Total USD 10.87</p><script>alert(1)</script><a href="https://example.invalid/private">Order</a></body></html>';
+for(const [name,source] of [['receipt.html',html],['receipt.eml','Subject: Amazon order\r\nDate: Mon, 12 Oct 2026 12:00:00 +0000\r\nContent-Type: text/html; charset=utf-8\r\n\r\n'+html]]){const r=await receiptFileText(name,source);assert(r.includes('Paper towels'));assert(r.includes('10.87'));assert(!r.includes('alert'));assert(!r.includes('example.invalid'));}
+console.log('PASS: saved HTML and MIME emails retain product names and totals without scripts or tracking URLs.');

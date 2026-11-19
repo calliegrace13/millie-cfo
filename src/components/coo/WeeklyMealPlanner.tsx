@@ -263,3 +263,4 @@ function DailyNutritionSummary({ entries, weekStart }: { entries: MealEntry[]; w
     </div>
   );
 }
+

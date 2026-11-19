@@ -151,3 +151,4 @@ export function useMastercardConnect(onSuccess?: () => void) {
     customerId,
   };
 }
+

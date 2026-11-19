@@ -1,3 +1,5 @@
+import {confirmAction} from '@/components/ui/confirm-action';
+import {RuleReview} from '@/components/RuleReview';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -152,7 +154,7 @@ export function TransactionRulesContent() {
   }
 
   async function deleteRule(id: string) {
-    if (!confirm('Delete this rule?')) return;
+    if (!await confirmAction('Delete this rule?')) return;
     const { error } = await supabase.from('transaction_rules').delete().eq('id', id);
     if (error) {
       toast.error('Failed to delete rule');
@@ -171,67 +173,6 @@ export function TransactionRulesContent() {
     if (!error) {
       setRules(prev => prev.map(r => r.id === rule.id ? { ...r, is_active: !r.is_active } : r));
     }
-  }
-
-  async function applyRulesToExisting() {
-    if (!user) return;
-    
-    const activeRules = rules.filter(r => r.is_active).sort((a, b) => b.priority - a.priority);
-    if (activeRules.length === 0) {
-      toast.error('No active rules to apply');
-      return;
-    }
-
-    const { data: transactions, error: txError } = await supabase
-      .from('transactions')
-      .select('id, name, merchant_name');
-
-    if (txError || !transactions) {
-      toast.error('Failed to fetch transactions');
-      return;
-    }
-
-    let updated = 0;
-    for (const tx of transactions) {
-      const txText = `${tx.name} ${tx.merchant_name || ''}`.toLowerCase();
-      
-      for (const rule of activeRules) {
-        // Split match_text by comma to support multiple phrases
-        const phrases = rule.match_text.split(',').map(p => p.trim()).filter(p => p.length > 0);
-        
-        let matches = false;
-        for (const phrase of phrases) {
-          switch (rule.match_type) {
-            case 'contains':
-              matches = txText.includes(phrase);
-              break;
-            case 'starts_with':
-              matches = txText.startsWith(phrase);
-              break;
-            case 'exact':
-              matches = txText === phrase;
-              break;
-          }
-          if (matches) break; // Stop at first matching phrase
-        }
-
-        if (matches) {
-          const updateData: Record<string, unknown> = {};
-          if (rule.category) updateData.category = rule.category;
-          if (rule.cash_flow_type) updateData.cash_flow_type = rule.cash_flow_type;
-          if (rule.is_one_time_expense) updateData.is_one_time_expense = true;
-          if (rule.income_type) updateData.income_type = rule.income_type;
-
-          if (Object.keys(updateData).length > 0) {
-            await supabase.from('transactions').update(updateData).eq('id', tx.id);
-            updated++;
-          }
-          break; // Stop at first matching rule
-        }
-      }
-    }
-
-    toast.success(`Applied rules to ${updated} transactions`);
   }
 
   async function generateSuggestionsFromTransactions() {
@@ -383,10 +324,7 @@ export function TransactionRulesContent() {
               <Sparkles className="w-4 h-4 mr-2" />
               Generate from Transactions
             </Button>
-            <Button variant="outline" onClick={applyRulesToExisting}>
-              <Zap className="w-4 h-4 mr-2" />
-              Apply to Existing
-            </Button>
+
             <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
               <DialogTrigger asChild>
                 <Button><Plus className="w-4 h-4 mr-2" />Add Rule</Button>
@@ -526,6 +464,7 @@ export function TransactionRulesContent() {
           </div>
         }
       />
+      <RuleReview rules={rules}/>
 
       {loading ? (
         <div className="text-center py-8 text-muted-foreground">Loading rules...</div>
@@ -647,3 +586,4 @@ export default function TransactionRules() {
     </AppLayout>
   );
 }
+

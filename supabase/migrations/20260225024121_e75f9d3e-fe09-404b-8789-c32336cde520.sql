@@ -47,3 +47,4 @@ FOR UPDATE
 USING (
   is_joint = true AND user_id = get_partner_user_id(auth.uid())
 );
+

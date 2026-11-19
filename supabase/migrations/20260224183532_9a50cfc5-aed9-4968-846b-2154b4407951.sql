@@ -142,3 +142,4 @@ CREATE POLICY "Partners can view partner recipes"
   USING (
     user_id = public.get_partner_user_id(auth.uid())
   );
+

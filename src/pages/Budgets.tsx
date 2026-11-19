@@ -690,3 +690,4 @@ export default function Budgets() {
     </AppLayout>
   );
 }
+

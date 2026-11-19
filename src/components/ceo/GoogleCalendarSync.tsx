@@ -169,3 +169,4 @@ export function GoogleCalendarSync({ currentMonth }: { currentMonth: Date }) {
     </div>
   );
 }
+

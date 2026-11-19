@@ -1,3 +1,12 @@
+import {TransactionMemory} from '@/components/transactions/TransactionMemory';
+import {merchantKey} from '../../supabase/functions/_shared/transaction-classifier';
+import {useModules} from '@/hooks/useModules';
+import {QuarterOnboarding} from '@/components/transactions/QuarterOnboarding';
+import {MerchantRoutines} from '@/components/transactions/MerchantRoutines';
+import {closedForReview,reviewQuarters} from '../../supabase/functions/_shared/review-periods';
+import {ClassificationReview} from '@/components/transactions/ClassificationReview';
+import {financeDb,useHousehold} from '@/hooks/useHousehold';
+import {StatementImport} from '@/components/StatementImport';
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { logError } from '@/lib/logging';
@@ -22,12 +31,13 @@ import type { Event, TransactionEvent as TxEvent } from '@/lib/types';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Transaction, Account, CashFlowCategory, AmortizationType, IncomeType } from '@/lib/types';
 import { toast } from 'sonner';
-import { Navigate } from 'react-router-dom';
+import {ReceiptWorkspace} from '@/components/transactions/ReceiptWorkspace';
+import { Navigate, useLocation } from 'react-router-dom';
 import { TransactionRow } from '@/components/transactions/TransactionRow';
 
 const DEFAULT_CATEGORIES = [
   'Food & Dining', 'Shopping', 'Transportation', 'Bills & Utilities',
-  'Entertainment', 'Healthcare', 'Travel', 'Income', 'Transfer', 'Other'
+  'Entertainment', 'Healthcare', 'Travel', 'Income', 'Transfer', 'Credit Card Payment', 'Groceries', 'Services', 'Home', 'Personal Care', 'Fees & Interest', 'Taxes & Giving', 'Debt Payment', 'Other'
 ];
 
 type CustomCategory = {
@@ -40,6 +50,12 @@ const ROW_HEIGHT = 52;
 const EXPANDED_ROW_HEIGHT = 160;
 
 export function TransactionsContent() {
+  const {hash:reviewHash,pathname}=useLocation();const receiptPage=pathname==='/receipts';
+  const [reviewTool,setReviewTool]=useState(receiptPage?'receipts':'review');
+  useEffect(()=>{if(receiptPage)setReviewTool('receipts');else if(reviewHash==='#receipt-review')setReviewTool('receipts');else if(reviewHash==='#amazon-purchase-review'||reviewHash==='#patterns')setReviewTool('patterns');else if(reviewHash==='#movements')setReviewTool('classification');},[reviewHash,receiptPage]);
+ const {isEnabled}=useModules();
+ const {reload:reloadHousehold,data:householdData,loading:householdLoading,error:householdError}=useHousehold();
+ const [categoryCorrection,setCategoryCorrection]=useState<{id:string;category:string}|null>(null);
   const { user, loading: authLoading } = useAuth();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -59,6 +75,11 @@ const [syncing, setSyncing] = useState(false);
   const [amountOp, setAmountOp] = useState<string>('any');
   const [amountValue, setAmountValue] = useState<string>('');
   const [currentTab, setCurrentTab] = useState<'all' | 'review'>('review');
+  const [chosenQuarter,setChosenQuarter]=useState(()=>{const q=new URLSearchParams(window.location.search).get('quarter')||'';return /^20\d{2}-(01|04|07|10)-01$/.test(q)?q:'';});
+  const documents=householdData.documents||[];
+  const quarters=reviewQuarters(transactions,documents,user?.id||'');
+  const quarter=quarters.find(q=>q.start===chosenQuarter&&q.open>0)||quarters.find(q=>q.open>0);
+  const reviewEligible=(tx:Transaction)=>tx.user_id===user?.id&&!tx.pending&&!closedForReview(tx,documents,user?.id||'')&&!!quarter&&tx.date>=quarter.start&&tx.date<=quarter.end;
   const [expandedTxId, setExpandedTxId] = useState<string | null>(null);
   const [events, setEvents] = useState<Event[]>([]);
   const [transactionEvents, setTransactionEvents] = useState<TxEvent[]>([]);
@@ -115,7 +136,7 @@ const [syncing, setSyncing] = useState(false);
   }, []);
 
   const isUnlinkedTransfer = useCallback((tx: Transaction): boolean => {
-    return tx.category === 'Transfer' && !tx.linked_transfer_id && !tx.is_transfer_exception;
+    return ['Transfer','Credit Card Payment'].includes(tx.category||'') && !tx.linked_transfer_id && !tx.is_transfer_exception;
   }, []);
 
   // Memoize unlinked transfer count
@@ -175,9 +196,9 @@ const [syncing, setSyncing] = useState(false);
   const filtered = useMemo(() => {
     return transactions.filter(tx => {
       // Hide offset child transactions (they merge into parent)
-      if (offsetChildIds.has(tx.id)) return false;
+      if (currentTab === 'all' && offsetChildIds.has(tx.id)) return false;
       // Review tab filter
-      if (currentTab === 'review' && !tx.needs_review) return false;
+      if (currentTab === 'review' && (!tx.needs_review || !reviewEligible(tx) || householdLoading || householdError)) return false;
 
       // Search across all relevant fields including amount (exact and rounded)
       const searchLower = debouncedSearchQuery.toLowerCase();
@@ -225,7 +246,7 @@ const [syncing, setSyncing] = useState(false);
       const matchesDate = currentTab === 'review' || (tx.date >= startDate && tx.date <= endDate);
       return matchesSearch && matchesCategory && matchesAccount && matchesDate && matchesAmountFilter;
     });
-  }, [transactions, debouncedSearchQuery, categoryFilter, accountFilter, startDate, endDate, isUnlinkedTransfer, currentTab, offsetChildIds, amountOp, amountValue]);
+  }, [transactions, debouncedSearchQuery, categoryFilter, accountFilter, startDate, endDate, isUnlinkedTransfer, currentTab, offsetChildIds, amountOp, amountValue, householdData, householdLoading, householdError, quarter?.start, user?.id]);
 
   // Virtualizer for large lists
   const rowVirtualizer = useVirtualizer({
@@ -237,7 +258,7 @@ const [syncing, setSyncing] = useState(false);
       // Base expanded height: compact row + action buttons
       let height = EXPANDED_ROW_HEIGHT;
       // Add height for transfer section if it's a transfer
-      if (tx.category === 'Transfer') height += 40;
+      if (['Transfer','Credit Card Payment'].includes(tx.category||'')) height += 40;
       return height;
     },
     overscan: 5,
@@ -271,7 +292,7 @@ const [syncing, setSyncing] = useState(false);
     try {
       const [txData, accRes, catRes, eventsRes, teRes, offsetsRes] = await Promise.all([
         fetchAllTransactions(),
-        supabase.from('accounts').select('*').or('is_deleted.is.null,is_deleted.eq.false'),
+        supabase.from('accounts').select('*'),
         supabase.from('transaction_categories').select('*'),
         supabase.from('events').select('*').order('name'),
         supabase.from('transaction_events').select('*'),
@@ -285,70 +306,12 @@ const [syncing, setSyncing] = useState(false);
       if (offsetsRes.data) setOffsets(offsetsRes.data as any[]);
       
       // Auto-link transfers with single matches
-      await autoLinkTransfers(txData);
+      // Transfer matching must be explicitly reviewed; loading never edits the ledger.
     } catch (err) {
       console.error('Failed to load transactions', err);
       toast.error('Failed to load transactions');
     } finally {
       setLoading(false);
-    }
-  }
-
-  // Optimized auto-link with batched updates
-  async function autoLinkTransfers(txList: Transaction[]) {
-    const unlinkedTransfers = txList.filter(tx => 
-      tx.category === 'Transfer' && !tx.linked_transfer_id && !tx.is_transfer_exception
-    );
-
-    if (unlinkedTransfers.length === 0) return;
-
-    const linksToCreate: { txId: string; linkedId: string }[] = [];
-
-    for (const tx of unlinkedTransfers) {
-      const txDate = new Date(tx.date);
-      const fiveDaysBefore = new Date(txDate);
-      fiveDaysBefore.setDate(fiveDaysBefore.getDate() - 5);
-      const fiveDaysAfter = new Date(txDate);
-      fiveDaysAfter.setDate(fiveDaysAfter.getDate() + 5);
-
-      const matches = txList.filter(other => {
-        if (other.id === tx.id) return false;
-        if (other.category !== 'Transfer') return false;
-        if (other.linked_transfer_id) return false;
-        if (Math.sign(other.amount) === Math.sign(tx.amount)) return false;
-        const diff = Math.abs(Math.abs(other.amount) - Math.abs(tx.amount));
-        const threshold = Math.max(1, Math.abs(tx.amount) * 0.01);
-        if (diff > threshold) return false;
-        const otherDate = new Date(other.date);
-        if (otherDate < fiveDaysBefore || otherDate > fiveDaysAfter) return false;
-        return true;
-      });
-
-      if (matches.length === 1) {
-        const match = matches[0];
-        const alreadyQueued = linksToCreate.some(
-          l => l.txId === match.id || l.linkedId === tx.id || l.txId === tx.id || l.linkedId === match.id
-        );
-        if (!alreadyQueued) {
-          linksToCreate.push({ txId: tx.id, linkedId: match.id });
-        }
-      }
-    }
-
-    if (linksToCreate.length > 0) {
-      // Batch all updates into parallel promises
-      const updatePromises = linksToCreate.flatMap(link => [
-        supabase.from('transactions').update({ linked_transfer_id: link.linkedId }).eq('id', link.txId),
-        supabase.from('transactions').update({ linked_transfer_id: link.txId }).eq('id', link.linkedId)
-      ]);
-      
-      await Promise.all(updatePromises);
-      toast.success(`Auto-linked ${linksToCreate.length} transfer pair${linksToCreate.length > 1 ? 's' : ''}`);
-    }
-
-    if (linksToCreate.length > 0) {
-      const { data: refreshed } = await supabase.from('transactions').select('*').order('date', { ascending: false });
-      if (refreshed) setTransactions(refreshed as Transaction[]);
     }
   }
 
@@ -385,15 +348,7 @@ const [syncing, setSyncing] = useState(false);
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
-      if (data?.failed) {
-        const failures = (data.results ?? []).filter((item: {status: string}) => item.status === 'failed')
-          .map((item: {institution?: string; reason: string}) => `${item.institution ?? 'Linked bank'}: ${item.reason}`);
-        toast.error('Some bank connections could not sync', { description: failures.join('; ') });
-      } else if (!data?.results?.length) {
-        toast.info('No linked banks to sync');
-      } else {
-        toast.success(`Imported ${data.synced} new transactions`);
-      }
+      toast.success(`Synced ${data?.synced ?? 0} transactions`);
       await fetchData();
     } catch (err) {
       logError('Transactions sync', err);
@@ -448,11 +403,7 @@ const [syncing, setSyncing] = useState(false);
     return date.substring(0, 7);
   }, []);
 
-  const updateCategory = useCallback(async (id: string, category: string) => {
-    await supabase.from('transactions').update({ category }).eq('id', id);
-    setTransactions(prev => prev.map(tx => tx.id === id ? { ...tx, category } : tx));
-    toast.success('Category updated');
-  }, []);
+  const updateCategory = useCallback((id:string,category:string)=>{setCategoryCorrection({id,category});}, []);
 
   const updateIncomeType = useCallback(async (id: string, incomeType: IncomeType | null) => {
     await supabase.from('transactions').update({ income_type: incomeType }).eq('id', id);
@@ -470,7 +421,7 @@ const [syncing, setSyncing] = useState(false);
       months: '12',
       start_date: startDate,
     });
-    setAmortizeDialogOpen(true);
+    window.location.assign('/amortization?transaction='+encodeURIComponent(tx.id));
   }, []);
 
   async function createAmortization(e: React.FormEvent) {
@@ -549,7 +500,7 @@ const [syncing, setSyncing] = useState(false);
 
   // Memoize potential matches lookup
   const getPotentialMatches = useCallback((tx: Transaction): { transferMatches: Transaction[]; otherMatches: Transaction[] } => {
-    if (tx.category !== 'Transfer') return { transferMatches: [], otherMatches: [] };
+    if (!['Transfer','Credit Card Payment'].includes(tx.category||'')) return { transferMatches: [], otherMatches: [] };
     const txDate = new Date(tx.date);
     const fiveDaysBefore = new Date(txDate);
     fiveDaysBefore.setDate(fiveDaysBefore.getDate() - 5);
@@ -560,16 +511,16 @@ const [syncing, setSyncing] = useState(false);
     const otherMatches: Transaction[] = [];
 
     transactions.forEach(other => {
-      if (other.id === tx.id) return;
+      if (other.id === tx.id||other.account_id===tx.account_id||other.user_id!==tx.user_id||other.pending||tx.pending) return;
+      if(accounts.find(a=>a.id===other.account_id)?.currency!==accounts.find(a=>a.id===tx.account_id)?.currency)return;
       if (other.linked_transfer_id) return;
       if (Math.sign(other.amount) === Math.sign(tx.amount)) return;
       const diff = Math.abs(Math.abs(other.amount) - Math.abs(tx.amount));
-      const threshold = Math.max(1, Math.abs(tx.amount) * 0.01);
-      if (diff > threshold) return;
+      if (Math.round(Math.abs(other.amount)*100)!==Math.round(Math.abs(tx.amount)*100)) return;
       const otherDate = new Date(other.date);
       if (otherDate < fiveDaysBefore || otherDate > fiveDaysAfter) return;
 
-      if (other.category === 'Transfer') {
+      if (['Transfer','Credit Card Payment'].includes(other.category||'')) {
         transferMatches.push(other);
       } else {
         otherMatches.push(other);
@@ -577,33 +528,9 @@ const [syncing, setSyncing] = useState(false);
     });
 
     return { transferMatches, otherMatches };
-  }, [transactions]);
+  }, [transactions,accounts]);
 
-  const linkTransfers = useCallback(async (txId: string, linkedId: string, convertToTransfer = false) => {
-    if (convertToTransfer) {
-      const { error: catError } = await supabase
-        .from('transactions')
-        .update({ category: 'Transfer' })
-        .eq('id', linkedId);
-      if (catError) {
-        toast.error('Failed to update category');
-        return;
-      }
-    }
-
-    const [err1, err2] = await Promise.all([
-      supabase.from('transactions').update({ linked_transfer_id: linkedId }).eq('id', txId),
-      supabase.from('transactions').update({ linked_transfer_id: txId }).eq('id', linkedId)
-    ]);
-
-    if (err1.error || err2.error) {
-      toast.error('Failed to link transfers');
-    } else {
-      toast.success(convertToTransfer ? 'Linked and converted to Transfer' : 'Transfers linked');
-      setLinkTransferDialogTx(null);
-      fetchData();
-    }
-  }, []);
+  const linkTransfers = useCallback(async (txId:string,linkedId:string,convertToTransfer=false)=>{const r=await financeDb.rpc('finance_link_movement',{_a:txId,_b:linkedId,_convert:convertToTransfer});if(r.error)return toast.error(r.error.message);toast.success('Both sides linked');setLinkTransferDialogTx(null);await fetchData();await reloadHousehold();}, []);
 
   const unlinkTransfer = useCallback(async (tx: Transaction) => {
     if (!tx.linked_transfer_id) return;
@@ -787,33 +714,36 @@ const [syncing, setSyncing] = useState(false);
     return map;
   }, [accounts]);
 
-  const reviewCount = useMemo(() => transactions.filter(tx => tx.needs_review).length, [transactions]);
+  const reviewCount = transactions.filter(tx => tx.needs_review && reviewEligible(tx)).length;
 
   const markReviewed = useCallback(async (id: string) => {
     const tx = transactions.find(t => t.id === id);
+    if(tx&&Number(tx.amount)>0&&merchantKey(tx)&&tx.category&&!['Other','Uncategorized','Income','Transfer','Credit Card Payment','Debt Payment','Reimbursement','Settlement'].includes(tx.category)&&!tx.linked_transfer_id){setCategoryCorrection({id,category:tx.category});return;}
     const idsToMark = [id];
-    if (tx?.linked_transfer_id) idsToMark.push(tx.linked_transfer_id);
-    await supabase.from('transactions').update({ needs_review: false }).in('id', idsToMark);
-    setTransactions(prev => prev.map(t => idsToMark.includes(t.id) ? { ...t, needs_review: false } : t));
-  }, [transactions]);
+    if (tx?.linked_transfer_id && transactions.some(t=>t.id===tx.linked_transfer_id&&reviewEligible(t))) idsToMark.push(tx.linked_transfer_id);
+    const result=await supabase.from('transactions').update({ needs_review: false }).in('id', idsToMark);
+    if(result.error)return toast.error('Could not save review. Please retry.');
+    await fetchData();await reloadHousehold();
+  }, [transactions, householdData, quarter?.start]);
 
   const markAllFilteredReviewed = useCallback(async () => {
-    const needsReview = filtered.filter(tx => tx.needs_review);
+    const needsReview = filtered.filter(tx => tx.needs_review && reviewEligible(tx));
     if (needsReview.length === 0) return;
     // Collect IDs including linked transfers
     const idSet = new Set<string>();
     needsReview.forEach(tx => {
       idSet.add(tx.id);
-      if (tx.linked_transfer_id) idSet.add(tx.linked_transfer_id);
+      if (tx.linked_transfer_id && transactions.some(t=>t.id===tx.linked_transfer_id&&reviewEligible(t))) idSet.add(tx.linked_transfer_id);
     });
     const ids = Array.from(idSet);
     // Supabase .in() has a limit, batch in chunks of 100
     for (let i = 0; i < ids.length; i += 100) {
-      await supabase.from('transactions').update({ needs_review: false }).in('id', ids.slice(i, i + 100));
+      const result=await supabase.from('transactions').update({ needs_review: false }).in('id', ids.slice(i, i + 100));
+      if(result.error){await fetchData();return toast.error('Some reviews could not be saved. Refreshed the remaining items.');}
     }
-    setTransactions(prev => prev.map(tx => idSet.has(tx.id) ? { ...tx, needs_review: false } : tx));
+    await fetchData();await reloadHousehold();
     toast.success(`Marked ${needsReview.length} transactions as reviewed`);
-  }, [filtered]);
+  }, [filtered, transactions, householdData, quarter?.start]);
 
   const toggleExpandTx = useCallback((id: string) => {
     setExpandedTxId(prev => prev === id ? null : id);
@@ -927,9 +857,18 @@ const [syncing, setSyncing] = useState(false);
 
   return (
     <>
+      {receiptPage?<PageHeader title="Receipts" description="Connect email, choose receipts, and match them to your purchases."/>:<div className="mb-5 rounded-2xl border bg-card p-5 space-y-3"><h1 className="text-2xl font-semibold">Transactions</h1><p className="text-sm text-muted-foreground">Choose what you want to do. Your place and saved decisions stay with you.</p><div role="group" aria-label="Transaction workflow" className="flex flex-wrap gap-2">{[['review','Review'],['receipts','Receipts'],['patterns','Merchant patterns'],['classification','Income & transfers'],['activity','All activity']].map(([id,label])=><Button key={id} variant={reviewTool===id?'default':'outline'} aria-pressed={reviewTool===id} onClick={()=>{setReviewTool(id);if(id==='activity')setCurrentTab('all');else if(id==='review')setCurrentTab('review');}}>{label}</Button>)}</div><p className="text-xs text-muted-foreground">{reviewTool==='review'?'Finish the remaining entries for your quarter, then close when ready.':reviewTool==='classification'?'Check whether entries are income, expenses or movements. Matching card payments and withdrawals stay out of spending totals.':reviewTool==='patterns'?'Approve common merchant decisions together and choose which ones should be remembered.':reviewTool==='receipts'?'Use your optional AI provider to read receipt evidence. Matching and approval remain under your control.':'Search and edit the full register. Previously closed history remains protected by its close rules.'}</p></div>}
+      {reviewTool==='review'&&isEnabled('close')&&<QuarterOnboarding transactions={transactions} quarters={quarters} quarter={quarter} onQuarter={q=>{setChosenQuarter(q);setCurrentTab('review');setSearchQuery('');setCategoryFilter('all');setAccountFilter(new Set());setAmountOp('any');}} onChanged={fetchData} loading={loading}/>}
+      {reviewTool==='review'&&!isEnabled('close')&&quarter&&<Card className="mb-4"><CardContent className="pt-5 space-y-3"><p className="font-medium">Review open transactions by quarter</p><Select value={quarter.start} onValueChange={q=>{setChosenQuarter(q);setCurrentTab('review');}}><SelectTrigger className="max-w-xs" aria-label="Quarter to review"><SelectValue/></SelectTrigger><SelectContent>{quarters.filter(q=>q.open>0).map(q=><SelectItem key={q.start} value={q.start}>{q.label} � {q.remaining} to review</SelectItem>)}</SelectContent></Select><p className="text-sm text-muted-foreground">Closed periods remain excluded. Enable Period close in Customize Millie to save closes and review restatements.</p></CardContent></Card>}
+      <div hidden={reviewTool!=='patterns'}>{!loading&&!householdError&&<MerchantRoutines transactions={transactions} accounts={accounts} categories={allCategories} offsets={offsets} onChanged={fetchData}/>}</div>
+      <div hidden={reviewTool!=='receipts'}>{!loading&&!householdError&&<ReceiptWorkspace active={reviewTool==='receipts'} transactions={transactions} accounts={accounts} categories={allCategories} offsets={offsets} onChanged={fetchData}/>}</div>
+      <div hidden={reviewTool!=='classification'}>{quarter&&<div className="mb-4 flex flex-wrap items-center gap-3"><span className="text-sm font-medium">Check this quarter</span><Select value={quarter.start} onValueChange={setChosenQuarter}><SelectTrigger className="max-w-xs" aria-label="Quarter for income and transfer checks"><SelectValue/></SelectTrigger><SelectContent>{quarters.filter(q=>q.open>0).map(q=><SelectItem key={q.start} value={q.start}>{q.label} · {q.remaining} to review</SelectItem>)}</SelectContent></Select></div>}{quarter&&!householdLoading&&!householdError&&<ClassificationReview key={quarter.start} start={quarter.start} end={quarter.end} accounts={accounts} transactions={transactions} onChanged={fetchData}/>}</div>
+      {categoryCorrection&&transactions.find(t=>t.id===categoryCorrection.id)&&<TransactionMemory key={categoryCorrection.id+categoryCorrection.category} transaction={transactions.find(t=>t.id===categoryCorrection.id)!} category={categoryCorrection.category} onClose={()=>setCategoryCorrection(null)} onChanged={fetchData}/>}
+      <details hidden={reviewTool!=="activity"&&reviewTool!=="review"} className="mb-4 rounded-xl border p-3"><summary className="cursor-pointer text-sm font-medium">Import a statement or manage individual entries</summary><StatementImport onImported={fetchData}/></details>
+      <div className={reviewTool==='review'||reviewTool==='activity'?'':'hidden'}>
       <PageHeader
-        title="Transactions"
-        description="View and manage all your transactions"
+        title={reviewTool==='review'?'Review remaining entries':'All transactions'}
+        description={reviewTool==='review'?'Resolve the exceptions that remain after patterns and receipt matching.':'Search your register and make individual corrections.'}
         actions={
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
@@ -1142,7 +1081,7 @@ const [syncing, setSyncing] = useState(false);
             </TabsTrigger>
             <TabsTrigger value="all">All Transactions</TabsTrigger>
           </TabsList>
-          {filtered.some(tx => tx.needs_review) && (
+          {currentTab==='review' && filtered.some(tx => tx.needs_review) && (
             <Button variant="outline" size="sm" onClick={markAllFilteredReviewed}>
               <CheckCircle2 className="w-4 h-4 mr-2" />
               Mark {filtered.filter(tx => tx.needs_review).length} Reviewed
@@ -1241,9 +1180,9 @@ const [syncing, setSyncing] = useState(false);
             />
           )}
         </div>
-        <Select value="" onValueChange={setDatePreset}>
+        <Select disabled={currentTab==='review'} value="" onValueChange={setDatePreset}>
           <SelectTrigger className="w-full sm:w-36">
-            <SelectValue placeholder="Date Preset" />
+            <SelectValue placeholder={currentTab==='review'?'Quarter selected above':'Date Preset'} />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="today">Today</SelectItem>
@@ -1260,7 +1199,8 @@ const [syncing, setSyncing] = useState(false);
           <Label className="text-sm text-muted-foreground whitespace-nowrap">From</Label>
           <Input 
             type="date" 
-            value={startDate} 
+            disabled={currentTab==='review'}
+            value={currentTab==='review'?(quarter?.start||''):startDate}
             onChange={(e) => setStartDate(e.target.value)}
             className="w-36"
           />
@@ -1269,7 +1209,8 @@ const [syncing, setSyncing] = useState(false);
           <Label className="text-sm text-muted-foreground whitespace-nowrap">To</Label>
           <Input 
             type="date" 
-            value={endDate} 
+            disabled={currentTab==='review'}
+            value={currentTab==='review'?(quarter?.end||''):endDate}
             onChange={(e) => setEndDate(e.target.value)}
             className="w-36"
           />
@@ -1379,6 +1320,7 @@ const [syncing, setSyncing] = useState(false);
           </CardContent>
         </Card>
       )}
+      </div>
     </>
   );
 }
@@ -1390,3 +1332,4 @@ export default function Transactions() {
     </AppLayout>
   );
 }
+

@@ -1,8 +1,4 @@
-project_id = "millie-cfo"
-
-[auth]
-site_url = "http://localhost:8080"
-additional_redirect_urls = ["http://localhost:8080/reset-password"]
+project_id = "cdkqtoghirbegixbgfli"
 
 [functions.plaid-create-link-token]
 verify_jwt = false
@@ -47,4 +43,41 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.monthly-summary]
+verify_jwt = false
+
+
+[functions.finance-maintenance]
+verify_jwt = false
+
+[functions.transaction-intelligence]
+verify_jwt = false
+
+[functions.compensation-planning]
+verify_jwt = false
+
+[functions.investment-analysis]
+verify_jwt = false
+
+[functions.debt-planning]
+verify_jwt = false
+
+[functions.long-term-planning]
+verify_jwt = false
+[functions.spending-watchlists]
+verify_jwt = true
+
+[functions.expense-recoveries]
+verify_jwt = true
+
+[functions.finance-ai]
+verify_jwt = false
+
+[functions.finance-assistant]
+verify_jwt = false
+
+[functions.receipt-email]
+# User JWTs or a verified, expiring internal worker lease are required in the handler.
+verify_jwt = false
+
+[functions.finance-autopilot]
 verify_jwt = false

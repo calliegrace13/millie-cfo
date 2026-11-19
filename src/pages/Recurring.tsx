@@ -291,7 +291,7 @@ export function RecurringContent() {
   const changes = useMemo(() => {
     const results: { item: RecurringTransaction; issue: string; severity: 'warning' | 'info' }[] = [];
 
-    recurring.filter(r => r.is_active).forEach(item => {
+    recurring.filter(r => r.is_active && (!r.end_date || r.end_date >= format(new Date(), 'yyyy-MM-dd'))).forEach(item => {
       // Check for amount changes
       if (item.last_amount && item.expected_amount !== 0) {
         const diff = Math.abs(item.last_amount - Math.abs(item.expected_amount));
@@ -330,7 +330,7 @@ export function RecurringContent() {
     const endDate = addMonths(today, 3);
     const upcoming: { date: string; name: string; amount: number; frequency: RecurringFrequency }[] = [];
 
-    recurring.filter(r => r.is_active && r.next_expected_date).forEach(item => {
+    recurring.filter(r => r.is_active && (!r.end_date || r.end_date >= format(new Date(), 'yyyy-MM-dd')) && r.next_expected_date).forEach(item => {
       let d = parseISO(item.next_expected_date!);
       let safety = 0;
       while (d <= endDate && safety < 52) {
@@ -360,7 +360,7 @@ export function RecurringContent() {
   // ── Summary stats ─────────────────────────────────────────────
 
   const stats = useMemo(() => {
-    const active = recurring.filter(r => r.is_active);
+    const active = recurring.filter(r => r.is_active && (!r.end_date || r.end_date >= format(new Date(), 'yyyy-MM-dd')));
     const monthlyExpenses = active
       .filter(r => r.expected_amount > 0)
       .reduce((s, r) => s + getMonthlyEquivalent(r.expected_amount, r.frequency), 0);
@@ -609,7 +609,7 @@ export function RecurringContent() {
                                 {formatCurrency(getMonthlyEquivalent(Math.abs(item.expected_amount), item.frequency))}
                               </TableCell>
                               <TableCell className="text-center">
-                                <Switch checked={item.is_active} onCheckedChange={() => toggleActive(item)} />
+                                <Button size="sm" variant="ghost" onClick={async()=>{const date=window.prompt('Last active date (YYYY-MM-DD); leave blank for no end date. Bank payments are not cancelled.',item.end_date||'');if(date===null)return;if(date&&(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(Date.parse(date))||new Date(date).toISOString().slice(0,10)!==date))return toast.error('Enter a valid date');const r=await supabase.from('recurring_transactions').update({end_date:date||null} as any).eq('id',item.id).eq('user_id',user.id);if(r.error)return toast.error(r.error.message);await fetchData();toast.success('Plan end date saved');}}>{item.end_date?'Ends '+item.end_date:'Set end date'}</Button><Switch checked={item.is_active} onCheckedChange={() => toggleActive(item)} />
                               </TableCell>
                               <TableCell>
                                 <Button variant="ghost" size="icon" onClick={() => deleteItem(item.id)} className="h-8 w-8 text-muted-foreground hover:text-destructive">
@@ -685,3 +685,4 @@ export default function Recurring() {
     </AppLayout>
   );
 }
+

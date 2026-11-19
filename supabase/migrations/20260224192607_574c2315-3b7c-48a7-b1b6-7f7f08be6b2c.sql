@@ -31,3 +31,4 @@ CREATE TRIGGER update_contacts_updated_at BEFORE UPDATE ON public.contacts FOR E
 
 -- Index for native contact dedup
 CREATE UNIQUE INDEX idx_contacts_user_native ON public.contacts (user_id, native_contact_id) WHERE native_contact_id IS NOT NULL;
+

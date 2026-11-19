@@ -1,0 +1,20 @@
+import {useEffect,useState} from 'react';
+import {Link} from 'react-router-dom';
+import {useHousehold,financeDb} from '@/hooks/useHousehold';
+import {useAuth} from '@/hooks/useAuth';
+import {Card,CardContent,CardHeader,CardTitle} from '@/components/ui/card';
+import {Button} from '@/components/ui/button';
+type Connection={id:string;institution_name:string|null;last_attempt:string|null;last_success:string|null;error:string|null;syncing:boolean};
+export function DataCoverage({start,end,currency}:{start?:string;end?:string;currency?:string}) {
+ const {data}=useHousehold();const {user}=useAuth();const [connections,setConnections]=useState<Connection[]>([]);const [error,setError]=useState(false);const [loading,setLoading]=useState(true);
+ useEffect(()=>{let active=true;setConnections([]);setLoading(true);const load=async()=>{const r=await financeDb.rpc('finance_connection_status');if(active){setConnections(r.data||[]);setError(!!r.error);setLoading(false);}};void load();const timer=setInterval(load,60000);return()=>{active=false;clearInterval(timer);};},[user?.id]);
+ const accounts=data.accounts.filter(a=>!a.is_deleted&&(!currency||(a.currency||'USD')===currency));
+ const missing=accounts.filter(a=>!data.transactions.some(t=>t.account_id===a.id&&!t.pending&&(!start||t.date>=start)&&(!end||t.date<=end)));
+ const time=(s:string|null)=>s?new Date(s).toLocaleString():'Never';
+ return <Card className="mb-6"><CardHeader className="pb-3"><CardTitle className="text-lg">Data coverage</CardTitle></CardHeader><CardContent className="space-y-4 text-sm">
+ <p>{accounts.length} available accounts · {missing.length} with no posted transactions{start?' in this period':''}. Imported dates show available records, not a guarantee that every transaction is present.</p>
+ {loading?<p role="status">Checking bank connections…</p>:error?<p role="alert">Connection status unavailable. Do not assume imports are current.</p>:connections.length?<div className="space-y-2">{connections.map(c=><div key={c.id} className="rounded-md border p-3"><p className="font-medium">{c.institution_name||'Bank connection'} · {c.syncing?'Sync in progress':c.error?'Needs attention':!c.last_success?'Awaiting first successful sync':Date.now()-Date.parse(c.last_success)>36*3600000?'Sync overdue':'Imported'}</p><p>Last successful sync: {time(c.last_success)}</p>{c.error&&<p role="alert" className="text-destructive mt-1">{c.error}</p>}{c.last_attempt&&<p className="text-muted-foreground">Last attempt: {time(c.last_attempt)}</p>}</div>)}</div>:<p>No bank connections on your profile. Shared accounts may have been imported by your partner.</p>}
+ <details><summary className="cursor-pointer font-medium">Review account history and gaps</summary><ul className="mt-3 space-y-3">{accounts.map(a=>{const dates=data.transactions.filter(t=>t.account_id===a.id&&!t.pending).map(t=>t.date).sort();return <li key={a.id} className="border-t pt-2"><strong>{a.name}</strong><p>{dates.length?`${dates.length} posted records · ${dates[0]} through ${dates[dates.length-1]}`:'No posted history imported'}</p>{missing.includes(a)&&<p className="text-muted-foreground">No transactions available{start?' for the selected period':''}; verify whether this is expected.</p>}{a.user_id!==user?.id&&<p className="text-muted-foreground">Partner-shared history; their connection status is private.</p>}{a.is_manual&&<p className="text-muted-foreground">Manual account: no automatic bank updates.</p>}</li>;})}</ul><p className="mt-3 text-muted-foreground">Millie cannot discover accounts you have not connected or been granted access to. Compare this list with your bank statements. A missing account or restricted sharing window can make comparisons incomplete.</p></details>
+ <div className="flex flex-wrap items-center gap-3"><Button asChild variant="outline" size="sm"><Link to="/accounts">Manage accounts / sync now</Link></Button><span className="text-muted-foreground">Automatic bank sync runs every 6 hours. Alerts appear in Millie.</span></div>
+ </CardContent></Card>;
+}

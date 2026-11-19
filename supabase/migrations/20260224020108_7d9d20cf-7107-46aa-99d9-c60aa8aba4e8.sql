@@ -7,3 +7,4 @@ CREATE INDEX idx_transactions_needs_review ON public.transactions (needs_review)
 
 -- Mark transactions before Jan 1st 2025 as already reviewed
 UPDATE public.transactions SET needs_review = false WHERE date < '2025-01-01';
+

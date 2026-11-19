@@ -1,0 +1,15 @@
+import fs from 'node:fs';import assert from 'node:assert/strict';import ts from '../node_modules/typescript/lib/typescript.js';
+const code=ts.transpileModule(fs.readFileSync(new URL('../src/lib/receipt-selection.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.ES2022,target:ts.ScriptTarget.ES2022}}).outputText;
+const {selectReceiptPage,loadReceiptBatch}=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
+const first=Array.from({length:50},(_,i)=>'email-'+i),second=Array.from({length:50},(_,i)=>'email-'+(i+50));
+let selected=selectReceiptPage([],first,true);selected=selectReceiptPage(selected,second,true);assert.equal(selected.length,100);
+assert.equal(selectReceiptPage(selected,second,true).length,100,'Page selection must be idempotent');
+assert.deepEqual(selectReceiptPage(selected,first,false),second,'Deselecting a page must preserve other pages');
+let reads=0;const load=async id=>{reads++;return {name:id,text:'x'.repeat(6000)};};
+const a=await loadReceiptBatch(selected,10,50000,load);assert.equal(a.ids.length,8);assert.equal(a.sources.reduce((n,s)=>n+s.text.length,0),48000);assert.equal(reads,9);
+selected=selected.filter(id=>!a.ids.includes(id));assert.equal(selected.length,92);assert.equal(selected[0],'email-8','Only successfully prepared emails leave the selection');
+reads=0;const b=await loadReceiptBatch(selected,2,12000,load);assert.deepEqual(b.ids,['email-8','email-9']);assert.equal(reads,2,'Respect the slots left by existing prepared files or pasted text');
+reads=0;assert.equal((await loadReceiptBatch(selected,0,50000,load)).ids.length,0);assert.equal((await loadReceiptBatch(selected,10,0,load)).ids.length,0);assert.equal(reads,0);
+assert.equal((await loadReceiptBatch(['same','same'],10,50000,load)).ids.length,1);
+const c=await loadReceiptBatch(first,999,50000,async id=>({name:id,text:'short'}));assert.equal(c.ids.length,10,'A large selection must not become one oversized analysis');
+console.log('PASS 100-email cross-page selection, page deselection, duplicate IDs, partial-batch continuation, count and character limits, and full staging capacity. No Gmail or paid AI requests.');

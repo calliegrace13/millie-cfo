@@ -2,6 +2,9 @@ export type Account = {
   id: string;
   user_id: string;
   plaid_account_id?: string;
+  provider_institution_id?: string;
+  provider_institution_name?: string | null;
+  retained_history?: boolean;
   name: string;
   official_name?: string;
   type: 'checking' | 'savings' | 'credit' | 'investment' | 'loan';
@@ -11,6 +14,7 @@ export type Account = {
   available_balance?: number;
   currency: string;
   is_manual: boolean;
+  is_deleted?: boolean;
   is_joint: boolean;
   ownership_pct?: number | null;
   joint_start_date?: string | null;
@@ -34,6 +38,14 @@ export type CashFlowCategory = 'operating' | 'other';
 export type IncomeType = 'salary' | 'other';
 
 export type Transaction = {
+  merchant_routine_id?: string | null;
+  classification_source?: string;
+  classification_locked?: boolean;
+  classification_kind?: string;
+  classification_confidence?: number;
+  classification_reason?: string;
+  merchant_key?: string;
+  provider_metadata?: Record<string,unknown>;
   id: string;
   user_id: string;
   account_id?: string;
@@ -153,6 +165,7 @@ export type TransactionRule = {
 export type RecurringFrequency = 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'yearly';
 
 export type RecurringTransaction = {
+  end_date?: string | null;
   id: string;
   user_id: string;
   name: string;
@@ -189,3 +202,4 @@ export type TransactionEvent = {
   event_id: string;
   created_at: string;
 };
+

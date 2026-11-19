@@ -75,3 +75,4 @@ export function MonthlyFinancialSummary({ spendingSummary, monthlyTrends, topMer
     </Card>
   );
 }
+

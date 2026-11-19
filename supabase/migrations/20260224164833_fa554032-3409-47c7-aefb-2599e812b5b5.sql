@@ -107,3 +107,4 @@ CREATE POLICY "Users can delete own grocery items" ON public.grocery_items FOR D
 -- Timestamps triggers
 CREATE TRIGGER update_recipes_updated_at BEFORE UPDATE ON public.recipes FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 CREATE TRIGGER update_meal_plans_updated_at BEFORE UPDATE ON public.meal_plans FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+

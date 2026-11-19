@@ -1,4 +1,5 @@
 import { memo, useState } from 'react';
+import {Link as RouterLink} from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -141,6 +142,7 @@ export const TransactionRow = memo(function TransactionRow({
             {tx.needs_review && (
               <span className="w-2 h-2 rounded-full bg-primary shrink-0" />
             )}
+            {tx.merchant_routine_id&&!tx.needs_review&&<Badge variant="secondary" className="text-[10px] h-4 px-1 shrink-0">Remembered</Badge>}
             {isUnlinked && (
               <AlertCircle className="w-3.5 h-3.5 text-warning shrink-0" />
             )}
@@ -214,6 +216,7 @@ export const TransactionRow = memo(function TransactionRow({
                   size="icon"
                   className={cn(iconButtonClass, "text-primary hover:bg-primary/10")}
                   onClick={() => onMarkReviewed(tx.id)}
+                  aria-label={'Review '+(tx.merchant_name||tx.name)}
                 >
                   <CheckCircle2 className="w-4 h-4" />
                 </Button>
@@ -240,8 +243,10 @@ export const TransactionRow = memo(function TransactionRow({
       </div>
 
       {/* Expanded Detail Panel */}
+      {isExpanded && <RouterLink to={"/context?transaction="+tx.id} className="block px-8 py-2 text-sm text-primary underline">Understand this transaction · receipts &amp; context</RouterLink>}
       {isExpanded && (
         <div className="px-3 sm:px-4 pb-3 pt-0 ml-4 border-l-2 border-primary/20" onClick={e => e.stopPropagation()}>
+          {tx.classification_reason&&<p className="text-sm text-muted-foreground mb-3"><strong>{tx.classification_locked?'Confirmed category':'Category evidence'}:</strong> {tx.classification_reason}</p>}
           {/* Mobile-only category selector */}
           <div className="sm:hidden py-2" onClick={e => e.stopPropagation()}>
             <Popover>
@@ -452,7 +457,7 @@ export const TransactionRow = memo(function TransactionRow({
             </Tooltip>
 
             {/* Transfer Linking (only for transfers) */}
-            {tx.category === 'Transfer' && (
+            {['Transfer','Credit Card Payment'].includes(tx.category||'') && (
               <Tooltip>
                 <Popover>
                   <TooltipTrigger asChild>
@@ -848,3 +853,4 @@ export const TransactionRow = memo(function TransactionRow({
     </div>
   );
 });
+

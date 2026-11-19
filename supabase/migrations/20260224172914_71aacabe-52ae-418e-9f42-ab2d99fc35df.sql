@@ -35,3 +35,4 @@ CREATE TRIGGER update_google_calendar_tokens_updated_at
 -- Add google_event_id to calendar events for sync tracking
 ALTER TABLE public.ceo_calendar_events ADD COLUMN google_event_id TEXT;
 CREATE INDEX idx_ceo_calendar_events_google_id ON public.ceo_calendar_events (google_event_id) WHERE google_event_id IS NOT NULL;
+

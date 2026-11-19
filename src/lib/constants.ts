@@ -1,11 +1,11 @@
 // App configuration - edit these values to customize your app
-export const APP_NAME = "Millie CEO";
-export const APP_TAGLINE = "Run Your Life Like a Business";
+export const APP_NAME = 'Millie CFO';
+export const APP_TAGLINE = 'Your personal finance workspace';
 
 export type MillieRole = 'cfo' | 'coo' | 'ceo' | 'chro' | 'cto' | 'cio' | 'cmo';
 
 // Roles hidden from production UI (role switcher + routes). Remove entries to re-enable.
-export const HIDDEN_ROLES: Set<MillieRole> = new Set(['coo', 'chro', 'cto', 'cio', 'cmo']);
+export const HIDDEN_ROLES: Set<MillieRole> = new Set(['ceo', 'coo', 'chro', 'cto', 'cio', 'cmo']);
 
 export const MILLIE_ROLES: { id: MillieRole; label: string; tagline: string; icon: string }[] = [
   { id: 'ceo', label: 'CEO', tagline: 'Strategy', icon: 'Target' },

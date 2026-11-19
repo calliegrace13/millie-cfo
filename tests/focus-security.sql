@@ -1,0 +1,27 @@
+begin;
+create temp table focus_fixture as select id u,(select id from auth.users where id<>a.id limit 1) p,gen_random_uuid() account,gen_random_uuid() expense,gen_random_uuid() refund from auth.users a limit 1;
+grant select on focus_fixture to authenticated;
+insert into accounts(id,user_id,name,type,currency,current_balance) select account,u,'Focus fixture','checking','USD',1000 from focus_fixture;
+insert into transactions(id,user_id,account_id,name,date,amount,category,pending) select expense,u,account,'Focus purchase','2026-01-01'::date,100,'Shopping',false from focus_fixture union all select refund,u,account,'Focus refund','2026-01-02'::date,-25,'Shopping',false from focus_fixture;
+set local role authenticated;
+do $$declare f record;w jsonb;c jsonb;p jsonb;req uuid:=gen_random_uuid();blocked boolean;begin
+select * into strict f from focus_fixture;perform set_config('request.jwt.claim.sub',f.u::text,true);
+p:='{"currency":"USD","field":"category","value":"Shopping","target":50}';
+w:=finance_save_focus('watchlists','Fixture',p,null,null,'active',req);
+if finance_save_focus('watchlists','Fixture',p,null,null,'active',req)<>w then raise exception 'Replay changed result';end if;
+blocked:=false;begin perform finance_save_focus('watchlists','Bad',p,(w->>'id')::uuid,0,'active',gen_random_uuid());exception when raise_exception then blocked:=true;end;if not blocked then raise exception 'Stale revision accepted';end if;
+p:=jsonb_build_object('currency','USD','expenseId',f.expense,'expected',50,'receivedIds',jsonb_build_array(f.refund),'due',null);
+c:=finance_save_focus('recoveries','Claim',p,null,null,'active',gen_random_uuid());
+if (c->'payload'->'receivedSnapshots'->0->>'amount')::numeric<>-25 then raise exception 'Evidence missing';end if;
+blocked:=false;begin perform finance_save_focus('recoveries','Duplicate',p,null,null,'active',gen_random_uuid());exception when raise_exception then blocked:=true;end;if not blocked then raise exception 'Duplicate expense accepted';end if;
+blocked:=false;begin update finance_focus_records set name='Bypass' where id=(c->>'id')::uuid;exception when insufficient_privilege then blocked:=true;end;if not blocked then raise exception 'Direct mutation allowed';end if;
+perform finance_save_focus('recoveries','Claim',c->'payload',(c->>'id')::uuid,1,'archived',gen_random_uuid());
+if (select count(*) from finance_focus_history where record_id=(c->>'id')::uuid)<>2 then raise exception 'History lost';end if;
+if f.p is not null then perform set_config('request.jwt.claim.sub',f.p::text,true);if exists(select 1 from finance_focus_records where id=(c->>'id')::uuid) then raise exception 'Partner read private record';end if;
+blocked:=false;begin perform finance_save_focus('recoveries','Foreign',p,null,null,'active',gen_random_uuid());exception when raise_exception then blocked:=true;end;if not blocked then raise exception 'Foreign expense linked';end if;end if;
+end;$$;
+reset role;
+do $$begin if (select sum(amount) from transactions where id in(select expense from focus_fixture union select refund from focus_fixture))<>75 then raise exception 'Ledger mutated';end if;end;$$;
+set local role anon;
+do $$declare blocked boolean:=false;begin begin perform finance_save_focus('watchlists','Anonymous','{}',null,null,'active',gen_random_uuid());exception when insufficient_privilege then blocked:=true;end;if not blocked then raise exception 'Anonymous access';end if;end;$$;
+reset role;rollback;

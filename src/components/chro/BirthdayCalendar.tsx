@@ -154,3 +154,4 @@ function BirthdayCard({ display_name, next, daysUntil, age, contact_type, highli
     </Card>
   );
 }
+

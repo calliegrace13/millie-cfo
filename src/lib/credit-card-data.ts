@@ -283,3 +283,4 @@ export function formatBenefitValue(type: string, value: number): string {
       return String(value);
   }
 }
+

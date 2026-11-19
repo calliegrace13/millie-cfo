@@ -1,0 +1,27 @@
+BEGIN;
+CREATE TEMP TABLE event_fixture AS SELECT user_id owner_id,partner_user_id partner_id,gen_random_uuid() a,gen_random_uuid() b FROM partner_links WHERE status='active' LIMIT 1;
+GRANT SELECT ON event_fixture TO authenticated;
+DO $$ BEGIN IF NOT EXISTS(SELECT 1 FROM event_fixture) THEN RAISE EXCEPTION 'Active pair required';END IF;END $$;
+INSERT INTO accounts(id,user_id,name,type,currency) SELECT a,owner_id,'Event A','checking','USD' FROM event_fixture UNION ALL SELECT b,owner_id,'Event B','checking','USD' FROM event_fixture;
+SET LOCAL ROLE authenticated;
+DO $$ DECLARE f record;expected jsonb;bad jsonb;blocked boolean;n integer;BEGIN
+ SELECT * INTO f FROM event_fixture;PERFORM set_config('request.jwt.claim.sub',f.owner_id::text,true);
+ PERFORM finance_transaction_history(f.a,'1899-01-01',100,50,true,'Event fixture');
+ PERFORM finance_transaction_history(f.b,'1899-01-01',100,50,true,'Event fixture');
+ PERFORM finance_schedule(ARRAY[f.a,f.b],current_date+30,60,true,'Later fixture');
+ SELECT jsonb_agg(to_jsonb(r) ORDER BY account_id) INTO expected FROM finance_allocations r WHERE account_id IN(f.a,f.b) AND effective_from='1899-01-01';
+ IF (SELECT count(*) FROM finance_allocations WHERE owner_id=f.owner_id AND effective_from='1899-01-01')<>2 THEN RAISE EXCEPTION 'Fixture date collision';END IF;
+ blocked:=false;BEGIN PERFORM finance_remove_timeline_event('1899-01-01',jsonb_build_array(expected->0));EXCEPTION WHEN raise_exception THEN blocked:=true;END;IF NOT blocked THEN RAISE EXCEPTION 'Incomplete event removed';END IF;
+ bad:=jsonb_set(expected,'{1,owner_pct}','99');
+ blocked:=false;BEGIN PERFORM finance_remove_timeline_event('1899-01-01',bad);EXCEPTION WHEN raise_exception THEN blocked:=true;END;
+ IF NOT blocked OR (SELECT count(*) FROM finance_allocations WHERE account_id IN(f.a,f.b) AND effective_from='1899-01-01')<>2 THEN RAISE EXCEPTION 'Stale event partially removed';END IF;
+ PERFORM set_config('request.jwt.claim.sub',f.partner_id::text,true);
+ blocked:=false;BEGIN PERFORM finance_remove_timeline_event('1899-01-01',expected);EXCEPTION WHEN raise_exception THEN blocked:=true;END;IF NOT blocked THEN RAISE EXCEPTION 'Other owner removed event';END IF;
+ PERFORM set_config('request.jwt.claim.sub',f.owner_id::text,true);
+ n:=finance_remove_timeline_event('1899-01-01',expected);IF n<>2 THEN RAISE EXCEPTION 'Incomplete deletion';END IF;
+ IF (SELECT count(*) FROM finance_allocations WHERE account_id IN(f.a,f.b) AND effective_from=current_date+30)<>2 THEN RAISE EXCEPTION 'Later arrangements removed';END IF;
+ IF (SELECT count(*) FROM finance_allocation_audit WHERE account_id IN(f.a,f.b) AND operation='DELETE' AND rule->>'effective_from'='1899-01-01')<>2 THEN RAISE EXCEPTION 'Audit incomplete';END IF;
+END $$;
+RESET ROLE;
+ROLLBACK;
+SELECT 'PASS: complete event removal, atomic rollback, stale/incomplete preview rejection, owner isolation, later rules and audit preservation. Fixtures rolled back.' AS result;

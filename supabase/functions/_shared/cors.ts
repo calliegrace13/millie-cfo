@@ -14,3 +14,4 @@ export function getCorsHeaders(req: Request): Record<string, string> {
     'Access-Control-Allow-Credentials': 'true',
   };
 }
+

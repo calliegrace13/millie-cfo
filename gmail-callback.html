@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en" data-role="cfo"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-H4pSCEGIUIhVRspnv4yOo/h5enTZfKfz6eWUrrAK6ow='; style-src 'self' 'unsafe-inline'; connect-src 'self' https://cdkqtoghirbegixbgfli.supabase.co wss://cdkqtoghirbegixbgfli.supabase.co; img-src 'self' data: blob:; font-src 'self' data:; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'none'">
+<title>Millie CFO | Connecting Gmail</title>
+<!-- Scrub the authorization response before the deferred app entry runs. Stay in
+     this document: another full-page navigation can lose private Sites access. -->
+<script>const q=new URLSearchParams(location.search);const code=q.get('code')||'',state=q.get('state')||'';const valid=code.length>0&&code.length<=5000&&/^[A-Za-z0-9_-]{43}$/.test(state);try{sessionStorage.setItem('millie-gmail-callback',JSON.stringify(valid?{code,state,at:Date.now()}:{error:'Gmail was not connected. Try connecting again.',at:Date.now()}));}finally{history.replaceState(null,'','/transactions#receipt-review');}</script>
+</head><body><div id="root"><p>Finishing your Gmail connection…</p></div>
+<script type="module" src="/src/main.tsx"></script>
+</body></html>

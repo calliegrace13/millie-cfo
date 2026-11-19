@@ -271,3 +271,24 @@
     font-family: 'JetBrains Mono', monospace;
   }
 }
+
+/* Shared disclosure controls for financial workflows. */
+@layer base {
+  details > summary { list-style: none; display: flex; align-items: center; gap: .625rem; min-height: 2.5rem; border-radius: .5rem; cursor: pointer; }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary::before { content: ''; width: .4rem; height: .4rem; flex-shrink: 0; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); opacity: .65; transition: transform 150ms ease; }
+  details[open] > summary::before { transform: rotate(45deg); }
+  details > summary:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 4px; }
+  @media (prefers-reduced-motion: reduce) { details > summary::before { transition: none; } }
+}
+/* A quiet, shared surface for both working styles. */
+.workspace-shell { --background: 40 22% 98%; --border: 145 12% 89%; --muted-foreground: 150 8% 43%; }
+.workspace-shell h1,.workspace-shell h2,.workspace-shell h3 { text-wrap: balance; }
+.workspace-nav { @apply flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring; }
+.workspace-nav-active { @apply bg-primary/10 text-primary font-semibold; }
+.workspace-tile { @apply rounded-2xl border bg-card p-5 transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring; }
+.workspace-hero { @apply rounded-3xl p-7 sm:p-10 text-white; background: linear-gradient(125deg,hsl(153 33% 23%),hsl(150 29% 34%)); }
+.workspace-eyebrow { @apply text-[10px] tracking-[.2em] font-semibold text-muted-foreground; }
+.workspace-shell :is(button,a,input,select,textarea):focus-visible { outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { .workspace-shell * { scroll-behavior: auto !important; transition: none !important; } }
+.dark .workspace-shell { --background: 150 10% 9%; --border: 145 10% 22%; --muted-foreground: 150 8% 67%; }

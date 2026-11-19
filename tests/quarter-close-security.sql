@@ -1,0 +1,27 @@
+begin;
+create temp table qc as select id u,gen_random_uuid() a,gen_random_uuid() t from auth.users limit 1;
+grant select on qc to authenticated,service_role;
+insert into accounts(id,user_id,name,type,currency) select a,u,'Quarter test fixture','checking','USD' from qc;
+insert into transactions(id,user_id,account_id,name,date,amount,category,needs_review) select t,u,a,'Quarter fixture','1901-01-15',1,'Other',true from qc;
+set local role authenticated;
+do $$ declare f record;payload jsonb;expected jsonb;blocked boolean;closed uuid;begin
+ select * into f from qc;perform set_config('request.jwt.claim.sub',f.u::text,true);perform set_config('request.jwt.claim.role','authenticated',true);
+ payload:=jsonb_build_object('reviewScope',jsonb_build_object('version',1,'ownerId',f.u,'start','1901-01-01','end','1901-03-31','accountIds',jsonb_build_array(f.a)));
+ select jsonb_agg(jsonb_build_object('id',id,'updated_at',updated_at)) into expected from transactions where id=f.t;
+ blocked:=false;begin perform finance_close_review_quarter(payload,expected);exception when raise_exception then blocked:=true;end;if not blocked then raise exception 'Unreviewed quarter closed';end if;
+ update transactions set needs_review=false where id=f.t;
+ blocked:=false;begin perform finance_close_review_quarter(payload,'[]');exception when raise_exception then blocked:=true;end;if not blocked then raise exception 'Stale sources accepted';end if;
+ select jsonb_agg(jsonb_build_object('id',id,'updated_at',updated_at)) into expected from transactions where id=f.t;
+ closed:=finance_close_review_quarter(payload,expected);
+ if closed is null then raise exception 'Close missing';end if;
+ blocked:=false;begin perform finance_close_review_quarter(payload,expected);exception when raise_exception then blocked:=true;end;if not blocked then raise exception 'Duplicate close accepted';end if;
+ update finance_documents set name='Changed' where id=closed;
+ if exists(select 1 from finance_documents where id=closed and name='Changed') then raise exception 'Close mutable';end if;
+ blocked:=false;begin perform finance_close_review_quarter(jsonb_set(payload,'{reviewScope,ownerId}',to_jsonb(gen_random_uuid())),expected);exception when raise_exception then blocked:=true;end;if not blocked then raise exception 'Other owner accepted';end if;
+end $$;
+reset role;
+do $$ declare f record;begin select * into f from qc;if not finance_closed_for_review(f.u,f.t,f.a,'1901-01-15') then raise exception 'Coverage missing';end if;if not finance_closed_for_review(f.u,gen_random_uuid(),f.a,'1901-02-15') then raise exception 'Backfill not covered';end if;if finance_closed_for_review(f.u,gen_random_uuid(),gen_random_uuid(),'1901-02-15') then raise exception 'New account hidden';end if;end $$;
+set local role service_role;
+do $$ declare f record;blocked boolean:=false;begin select * into f from qc;begin perform finance_apply_classifications(f.u,jsonb_build_array(jsonb_build_object('id',f.t)),true);exception when raise_exception then blocked:=true;end;if not blocked then raise exception 'Closed classification accepted';end if;end $$;
+reset role;rollback;
+select 'PASS: incomplete/stale/duplicate/foreign closes rejected; immutable closure, scoped backfill coverage and post-close classification protection; all fixtures rolled back.' as result;

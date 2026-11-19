@@ -149,3 +149,4 @@ export function WorkoutStats() {
     </div>
   );
 }
+

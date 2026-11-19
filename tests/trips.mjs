@@ -1,0 +1,26 @@
+import fs from 'node:fs';import assert from 'node:assert/strict';import ts from '../node_modules/typescript/lib/typescript.js';
+const compile=p=>ts.transpileModule(fs.readFileSync(new URL(p,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.ES2022,target:ts.ScriptTarget.ES2022}}).outputText,uri=s=>'data:text/javascript;base64,'+Buffer.from(s).toString('base64');
+const engine=uri(compile('../src/lib/accounting-plans.ts')),household=uri(compile('../src/lib/household-finance.ts').replace("'./accounting-plans'",JSON.stringify(engine)));
+const {tripCosts,tripDateCandidates,tripPurchase}=await import(uri(compile('../src/lib/trips.ts').replace("'./household-finance'",JSON.stringify(household))));
+const {validateReceipts,receiptSchema}=await import(uri(compile('../supabase/functions/_shared/receipt-contract.ts')));
+const p={id:'rome',starts_on:'2027-06-01',ends_on:'2027-06-10',auto_dates:true,account_ids:[],archived:false};
+const a={id:'card',user_id:'me',type:'credit',currency:'USD'},t={id:'flight',user_id:'me',account_id:'card',amount:500,date:'2027-02-01',name:'Delta',merchant_name:'Delta',category:'Travel'};
+assert.equal(tripDateCandidates(t,[p]).length,0,'Booking payment date is not travel date');
+for(const date of ['2027-06-01','2027-06-10'])assert.equal(tripDateCandidates({...t,date},[p]).length,1);
+assert.equal(tripDateCandidates({...t,date:'2027-06-02'},[p,{...p,id:'other'}]).length,2,'Overlaps require a choice');
+assert.equal(tripDateCandidates({...t,date:'2027-06-02'},[{...p,account_ids:['other']}]).length,0);
+for(const bad of [{...t,pending:true},{...t,amount:-5},{...t,category:'Credit Card Payment'},{...t,classification_kind:'income'}])assert(!tripPurchase(bad,[a]));
+const data={accounts:[a,{...a,id:'euro',currency:'EUR'}],transactions:[t,{...t,id:'meal',amount:20,date:'2027-06-02'},{...t,id:'refund',amount:-50,date:'2027-07-01'},{...t,id:'euroMeal',account_id:'euro',amount:30,date:'2027-06-02'}],allocations:[{account_id:'card',effective_from:'2027-06-01',owner_pct:50,included:true}],sharing:[],budgets:[],offsets:[{parent_transaction_id:'flight',offset_transaction_id:'refund'}]};
+const links=['flight','meal','euroMeal'].map(transaction_id=>({trip_id:'rome',transaction_id}));const before=JSON.stringify(data),cost=tripCosts(data,links,'rome','me');
+assert.deepEqual(cost.totals,{USD:{full:470,mine:485},EUR:{full:30,mine:30}});assert.equal(cost.rows.length,4);assert.equal(JSON.stringify(data),before,'Trip rollups do not mutate the ledger');
+assert.equal(tripCosts(data,links,'other','me').rows.length,0);
+const travel={kind:'flight',start_date:'2027-06-01',end_date:'2027-06-10',start_evidence:'June 1, 2027',end_evidence:'June 10, 2027',context:'Flight departs June 1, 2027. Return flight June 10, 2027.'};
+const receipt={merchant:'Delta',merchantEvidence:'Delta',source:0,reference:'ABC123',date:'2027-02-01',dateEvidence:'February 1, 2027',amount:500,amountEvidence:'Total USD 500.00',currency:'USD',items:[{name:'Flight',category:'Travel',evidence:'Flight'}],travel:[travel]};
+const sources=[{text:'Delta ABC123 purchased February 1, 2027. Total USD 500.00. '+travel.context}];
+assert.equal(validateReceipts({receipts:[structuredClone(receipt)]},sources)[0].travel.length,1);
+for(const v of [{...travel,start_date:'2027-06-02'},{...travel,end_date:'2027-06-11'},{...travel,context:'Invented flight'},{...travel,start_evidence:'June 1',end_evidence:'June 10'}])assert.equal(validateReceipts({receipts:[{...receipt,travel:[v]}]},sources)[0].travel.length,0,'Unsupported travel dates are never used');
+assert(receiptSchema.properties.receipts.items.required.includes('travel'));
+assert.equal(validateReceipts({receipts:[{...receipt,travel:[]}]},sources)[0].amount,500,'Ordinary receipts remain compatible');
+console.log('PASS trip date boundaries, overlaps, account scope, advance bookings, dated shares, linked refunds, currency isolation, unchanged ledger, and source-backed travel dates. No paid AI calls.');
+
+assert.throws(()=>validateReceipts({receipts:[{...receipt,travel:Array.from({length:13},()=>travel)}]},sources),'Travel entry cap remains enforced locally');

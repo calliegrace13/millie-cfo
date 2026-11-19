@@ -149,3 +149,4 @@ export function useHealthKit() {
 
   return { available, syncing, lastSyncCount, syncWorkouts, requestPermissions };
 }
+

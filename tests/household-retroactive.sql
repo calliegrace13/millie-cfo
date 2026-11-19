@@ -1,0 +1,27 @@
+BEGIN;
+CREATE TEMP TABLE retro_fixture AS SELECT p.user_id owner_id,p.partner_user_id partner_id,gen_random_uuid() account_id FROM partner_links p WHERE p.status='active' LIMIT 1;
+DO $$ BEGIN IF NOT EXISTS(SELECT 1 FROM retro_fixture) THEN RAISE EXCEPTION 'Active pair required'; END IF; END $$;
+GRANT SELECT ON retro_fixture TO authenticated;
+INSERT INTO accounts(id,user_id,name,type,current_balance,currency) SELECT account_id,owner_id,'Retroactive rollback fixture','checking',100,'USD' FROM retro_fixture;
+SET LOCAL ROLE authenticated;
+DO $$ DECLARE t record; blocked boolean; BEGIN
+ SELECT * INTO t FROM retro_fixture;
+ PERFORM set_config('request.jwt.claim.sub',t.owner_id::text,true);
+ PERFORM finance_schedule(ARRAY[t.account_id],current_date,70,true,'Later arrangement');
+ PERFORM finance_retroactive(ARRAY[t.account_id],current_date-30,50,true,'Earlier shared finances');
+ PERFORM finance_retroactive(ARRAY[t.account_id],current_date-30,60,true,'Correction');
+ IF (SELECT owner_pct FROM finance_allocations WHERE account_id=t.account_id AND effective_from=current_date-30)<>60 THEN RAISE EXCEPTION 'Correction failed'; END IF;
+ IF (SELECT owner_pct FROM finance_allocations WHERE account_id=t.account_id AND effective_from=current_date)<>70 THEN RAISE EXCEPTION 'Later arrangement changed'; END IF;
+ IF (SELECT owner_pct FROM finance_allocations WHERE account_id=t.account_id AND effective_from='0001-01-01')<>100 THEN RAISE EXCEPTION 'Earlier baseline changed'; END IF;
+ IF NOT EXISTS(SELECT 1 FROM finance_allocation_audit WHERE account_id=t.account_id AND operation='BEFORE_RETROACTIVE' AND rule->>'owner_pct'='50') THEN RAISE EXCEPTION 'Previous rule not audited'; END IF;
+ blocked:=false; BEGIN PERFORM finance_retroactive(ARRAY[t.account_id],current_date+1,50,true,'Invalid future'); EXCEPTION WHEN raise_exception THEN blocked:=true; END;
+ IF NOT blocked THEN RAISE EXCEPTION 'Future correction accepted'; END IF;
+ PERFORM finance_share_account(t.account_id,true,current_date-60,NULL);
+ PERFORM set_config('request.jwt.claim.sub',t.partner_id::text,true);
+ IF NOT finance_can_read_account(t.account_id,current_date-60) OR finance_can_read_account(t.account_id,current_date-61) THEN RAISE EXCEPTION 'Retroactive visibility boundary failed'; END IF;
+ blocked:=false; BEGIN PERFORM finance_retroactive(ARRAY[t.account_id],current_date-20,20,true,'Other owner'); EXCEPTION WHEN raise_exception THEN blocked:=true; END;
+ IF NOT blocked THEN RAISE EXCEPTION 'Partner could modify owner split'; END IF;
+END $$;
+RESET ROLE;
+ROLLBACK;
+SELECT 'PASS: historical correction, same-day audit, earlier and later rules preserved, owner-only mutation, historical visibility boundary. Fixtures rolled back.' AS result;

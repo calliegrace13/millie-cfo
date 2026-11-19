@@ -1,3 +1,4 @@
+import {confirmAction} from '@/components/ui/confirm-action';
 import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -8,7 +9,7 @@ import { usePartnerLink } from '@/hooks/usePartnerLink';
 import { toast } from 'sonner';
 import { Copy, Link2, Unlink, UserPlus, Loader2, CheckCircle2 } from 'lucide-react';
 
-export function PartnerPairing() {
+export function PartnerPairing({onChanged}: {onChanged?: () => void} = {}) {
   const { partnerLink, partnerEmail, loading, generateCode, redeemCode, unlinkPartner } = usePartnerLink();
   const [codeInput, setCodeInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -30,6 +31,7 @@ export function PartnerPairing() {
     try {
       await redeemCode(codeInput.trim());
       toast.success('Partner linked successfully!');
+      onChanged?.();
       setCodeInput('');
     } catch (err: any) {
       toast.error(err.message || 'Failed to link partner');
@@ -38,10 +40,9 @@ export function PartnerPairing() {
   };
 
   const handleUnlink = async () => {
+    if (!await confirmAction("Unlink and revoke partner access now? Previously shared transaction history will be retained privately by each recipient. New access and future updates stop. This does not settle balances or move money.")) return;
     setBusy(true);
-    await unlinkPartner();
-    toast.success('Partner unlinked');
-    setBusy(false);
+    try { await unlinkPartner(); toast.success('Partner unlinked'); onChanged?.(); } catch { toast.error('Could not unlink partner'); } finally { setBusy(false); }
   };
 
   const copyCode = () => {
@@ -68,7 +69,7 @@ export function PartnerPairing() {
             </Badge>
           </div>
           <CardDescription>
-            Your partner has full access to joint data across all roles.
+            Your partner can access your shared financial data.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -102,7 +103,7 @@ export function PartnerPairing() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center gap-2">
-            <div className="font-mono text-2xl font-bold tracking-widest bg-muted px-4 py-2 rounded-lg">
+            <div className="font-mono text-sm break-all font-bold bg-muted px-4 py-2 rounded-lg">
               {partnerLink.pairing_code}
             </div>
             <Button variant="outline" size="icon" onClick={copyCode}>
@@ -110,8 +111,9 @@ export function PartnerPairing() {
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            This code expires when used. Generate a new one if needed.
+            This invitation expires after 15 minutes or when used.
           </p>
+          <Button variant="outline" onClick={handleGenerate} disabled={busy}>Generate a new invitation</Button>
         </CardContent>
       </Card>
     );
@@ -127,7 +129,7 @@ export function PartnerPairing() {
         </CardTitle>
         <CardDescription>
           Generate a code to share, or enter your partner's code to link accounts. 
-          Both of you will see joint data (accounts, tasks, events, meal plans, budgets).
+          Linking does not share private accounts. Each person chooses account visibility below.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -149,10 +151,10 @@ export function PartnerPairing() {
           <div className="flex gap-2">
             <Input
               id="redeem-code"
-              placeholder="ABC123"
+              placeholder="Paste invitation code"
               value={codeInput}
               onChange={e => setCodeInput(e.target.value.toUpperCase())}
-              maxLength={6}
+              maxLength={32}
               className="font-mono uppercase tracking-widest"
             />
             <Button onClick={handleRedeem} disabled={busy || !codeInput.trim()}>
@@ -164,3 +166,4 @@ export function PartnerPairing() {
     </Card>
   );
 }
+

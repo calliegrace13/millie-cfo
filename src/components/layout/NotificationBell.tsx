@@ -49,7 +49,9 @@ export function NotificationBell() {
 
   useEffect(() => {
     if (!user) return;
+    setNotifications([]);
     fetchNotifications();
+    const poll=setInterval(fetchNotifications,60000);
 
     const channel = supabase
       .channel(`notifications:${user.id}`, { config: { private: true } })
@@ -59,7 +61,7 @@ export function NotificationBell() {
       })
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => { clearInterval(poll); supabase.removeChannel(channel); };
   }, [user]);
 
   async function fetchNotifications() {
@@ -150,3 +152,4 @@ export function NotificationBell() {
     </Popover>
   );
 }
+

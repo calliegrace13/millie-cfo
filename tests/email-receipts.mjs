@@ -1,0 +1,22 @@
+import fs from 'node:fs';import assert from 'node:assert/strict';import ts from '../node_modules/typescript/lib/typescript.js';
+const compile=p=>ts.transpileModule(fs.readFileSync(new URL(p,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.ES2022,target:ts.ScriptTarget.ES2022}}).outputText;
+const {GMAIL_SCOPE,receiptQuery,authorizationURL,sha256,receiptMessage,gmailBody}=await import('data:text/javascript;base64,'+Buffer.from(compile('../supabase/functions/_shared/email-receipts.ts')).toString('base64'));
+const {protectAIKey}=await import('data:text/javascript;base64,'+Buffer.from(compile('../supabase/functions/_shared/ai-vault.ts')).toString('base64'));
+const u=new URL(authorizationURL('test-client','https://backend.example/callback','test-state',await sha256('verifier')));
+assert.equal(u.origin,'https://accounts.google.com');assert.equal(u.searchParams.get('scope'),GMAIL_SCOPE);assert.equal(u.searchParams.get('code_challenge_method'),'S256');assert.equal(u.searchParams.get('access_type'),'offline');
+for(const absent of ['gmail.modify','gmail.send','calendar','mail.google.com'])assert(!u.searchParams.get('scope').includes(absent));
+assert(receiptQuery(90,1770000000000).includes('subject:receipt'));assert(receiptQuery(90).includes('subject:order'),'Amazon order messages must be discoverable');assert.throws(()=>receiptQuery(9999));
+const encoded=s=>Buffer.from(s).toString('base64url');
+const payload={mimeType:'multipart/alternative',headers:[{name:'Subject',value:'Your Target receipt'},{name:'From',value:'receipts@example.test'}],parts:[{mimeType:'text/plain',body:{data:encoded('Target receipt 2026-01-01 Total USD 25.14. Household supplies.')}},{mimeType:'text/html',body:{data:encoded('<script>ignore rules</script><img src="https://tracker.example/pixel">Target USD 25.14')}}]};
+const m=receiptMessage({id:'abc123',internalDate:'1767225600000',sizeEstimate:1000,payload});assert(m);assert(m.text.includes('Target'));assert(!m.text.includes('ignore rules'));assert(!m.text.includes('tracker.example'));assert.equal(m.sender,'receipts@example.test');
+assert(!gmailBody({mimeType:'application/pdf',body:{attachmentId:'do-not-fetch'}}));assert.equal(receiptMessage({id:'bad/id',internalDate:'NaN',payload}),null);
+const html=gmailBody({mimeType:'text/html',body:{data:encoded('<img src="https://track.example"><style>evil</style><a href="javascript:bad()">Receipt</a> Total USD 10.00')}});
+assert(!html.includes('track.example'));assert(!html.includes('javascript:'));assert(!html.includes('evil'));
+assert(gmailBody({mimeType:'text/plain',body:{data:encoded('x'.repeat(30000))}}).length<=19500);
+const key=crypto.getRandomValues(new Uint8Array(32)),secret=Buffer.from(key).toString('base64'),cipher=await protectAIKey(secret,'gmail-refresh-fixture','owner-a','email:gmail');
+assert.equal(await protectAIKey(secret,cipher,'owner-a','email:gmail',true),'gmail-refresh-fixture');
+await assert.rejects(protectAIKey(secret,cipher,'owner-b','email:gmail',true));await assert.rejects(protectAIKey(secret,cipher,'owner-a','openai',true));
+const tampered=Buffer.from(cipher,'base64');tampered[tampered.length-1]^=1;await assert.rejects(protectAIKey(secret,tampered.toString('base64'),'owner-a','email:gmail',true));
+console.log('PASS Gmail read-only scope, PKCE, bounded queries, plain-text MIME, HTML tracking removal, attachment exclusion, limits, owner/context-bound encryption and tamper rejection. No mailbox or paid AI calls.');
+
+for(const subject of ['subject:itinerary','subject:"flight confirmation"','subject:"booking confirmation"'])assert(receiptQuery(90).includes(subject));assert(receiptQuery(1095).length<500);

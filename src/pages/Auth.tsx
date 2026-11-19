@@ -27,34 +27,10 @@ export default function Auth() {
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotLoading, setForgotLoading] = useState(false);
 
-  const [demoLoading, setDemoLoading] = useState(false);
-
   if (user) {
     navigate('/');
     return null;
   }
-
-  const handleDemoLogin = async () => {
-    setDemoLoading(true);
-    try {
-      // Ensure demo user exists
-      const res = await supabase.functions.invoke('create-demo-user');
-      if (res.error) throw res.error;
-      const { email: demoEmail, password: demoPassword } = res.data;
-
-      const { error } = await signIn(demoEmail, demoPassword);
-      if (error) {
-        toast.error('Demo login failed. Please try again.');
-      } else {
-        toast.success('Welcome to the demo!');
-        navigate('/');
-      }
-    } catch {
-      toast.error('Could not start demo. Please try again.');
-    } finally {
-      setDemoLoading(false);
-    }
-  };
 
   const validateInputs = () => {
     try {
@@ -270,25 +246,6 @@ export default function Auth() {
           </Tabs>
         </Card>
 
-        <div className="relative">
-          <div className="absolute inset-0 flex items-center">
-            <span className="w-full border-t" />
-          </div>
-          <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-background px-2 text-muted-foreground">or</span>
-          </div>
-        </div>
-
-        <Button
-          variant="outline"
-          className="w-full"
-          onClick={handleDemoLogin}
-          disabled={demoLoading}
-        >
-          {demoLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-          Try Demo Account
-        </Button>
-
         <p className="text-center text-sm text-muted-foreground">
           Track expenses, manage budgets, and understand your finances like a pro.
         </p>
@@ -296,3 +253,4 @@ export default function Auth() {
     </div>
   );
 }
+

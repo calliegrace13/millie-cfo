@@ -171,3 +171,4 @@ export function FinancialHealthScore({ transactions, accounts, getMultiplier, bu
     </div>
   );
 }
+

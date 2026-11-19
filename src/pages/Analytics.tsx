@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { NetWorthContent } from './NetWorth';
@@ -10,7 +10,10 @@ import { TrendingUp, PieChart, Target, Flag } from 'lucide-react';
 type AnalyticsView = 'net-worth' | 'insights' | 'planning' | 'goals';
 
 export default function Analytics() {
-  const [view, setView] = useState<AnalyticsView>('net-worth');
+  const [params, setParams] = useSearchParams();
+  const requestedView = params.get('view');
+  const view: AnalyticsView = ['net-worth', 'insights', 'planning', 'goals'].includes(requestedView || '') ? requestedView as AnalyticsView : 'net-worth';
+  const setView = (next: AnalyticsView) => setParams({ view: next });
 
   return (
     <AppLayout>
@@ -19,6 +22,7 @@ export default function Analytics() {
           type="single"
           value={view}
           onValueChange={(v) => { if (v) setView(v as AnalyticsView); }}
+          aria-label="Planning and insights views"
           variant="outline"
           className="justify-start flex-wrap"
         >
@@ -48,3 +52,4 @@ export default function Analytics() {
     </AppLayout>
   );
 }
+

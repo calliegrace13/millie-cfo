@@ -85,3 +85,4 @@ CREATE TRIGGER clear_pairing_code_trigger
 
 -- Also clear codes on existing active rows
 UPDATE public.partner_links SET pairing_code = '' WHERE status = 'active' AND pairing_code <> '';
+

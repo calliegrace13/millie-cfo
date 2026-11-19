@@ -25,3 +25,4 @@ CREATE TRIGGER validate_credit_card_days_trigger
   BEFORE INSERT OR UPDATE ON public.credit_cards
   FOR EACH ROW
   EXECUTE FUNCTION public.validate_credit_card_days();
+

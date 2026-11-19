@@ -51,3 +51,4 @@ CREATE POLICY "Users can delete own tasks" ON public.ceo_tasks FOR DELETE USING 
 CREATE TRIGGER update_ceo_tasks_updated_at
   BEFORE UPDATE ON public.ceo_tasks
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+

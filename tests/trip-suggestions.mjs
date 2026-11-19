@@ -1,0 +1,14 @@
+import fs from 'node:fs';import assert from 'node:assert/strict';import ts from '../node_modules/typescript/lib/typescript.js';
+const js=ts.transpileModule(fs.readFileSync('src/lib/trip-suggestions.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.ES2022,target:ts.ScriptTarget.ES2022}}).outputText;
+const {suggestTrips,combineTripSuggestions}=await import('data:text/javascript;base64,'+Buffer.from(js).toString('base64'));
+const booking=(id,start,end,status='pending')=>({id,status,trip_id:null,receipt:{date:'2026-01-01',merchant:'Travel',travel:[{start_date:start,end_date:end}]}});
+const receipts=[booking('flight','2026-06-01','2026-06-01'),booking('hotel','2026-06-01','2026-06-06'),booking('return','2026-06-06','2026-06-06'),booking('other','2026-06-09','2026-06-10'),booking('cancelled','2026-07-01','2026-07-03','dismissed')];
+const original=JSON.stringify(receipts),groups=suggestTrips(receipts,[]);
+assert.equal(groups.length,2);assert.equal(groups[0].bookings.length,3);assert.equal(groups[0].starts_on,'2026-06-01');assert.equal(groups[0].ends_on,'2026-06-06');
+assert.equal(JSON.stringify(receipts),original);assert.equal(combineTripSuggestions(groups).ends_on,'2026-06-10');assert.equal(combineTripSuggestions(groups).bookings.length,4);assert.equal(combineTripSuggestions([]),null);
+assert.equal(suggestTrips(receipts,[{starts_on:'2026-06-01',ends_on:'2026-06-06'}]).length,1);
+assert.equal(suggestTrips([{id:'no-travel',status:'pending',receipt:{date:'2026-06-01'}}],[]).length,0);
+assert.equal(suggestTrips([booking('bad','2026-01-01','2028-01-01')],[]).length,0);
+assert.equal(suggestTrips([{...receipts[0],trip_id:'already-linked'}],[]).length,0);
+assert.equal(suggestTrips([booking('oneway','2026-08-01','2026-08-01')],[])[0].ends_on,'2026-08-01');
+console.log('PASS travel vs purchase dates, overlap grouping, explicit combination, existing/assigned/dismissed exclusion, missing evidence, one-way dates, unchanged source receipts.');

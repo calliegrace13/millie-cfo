@@ -47,3 +47,4 @@ export function StatCard({ title, value, subtitle, icon, trend, className }: Sta
     </Card>
   );
 }
+

@@ -249,3 +249,4 @@ export function CardOptimizer({ cards, benefits, categorySpending }: Props) {
     </div>
   );
 }
+

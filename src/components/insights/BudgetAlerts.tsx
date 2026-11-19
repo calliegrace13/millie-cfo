@@ -34,7 +34,7 @@ export function BudgetAlerts({ budgets, transactions, accounts, getMultiplier }:
 
       let spent = 0;
       transactions.forEach(tx => {
-        if (tx.amount <= 0) return;
+        if (tx.pending || tx.linked_transfer_id || tx.category === 'Income') return;
         if (tx.category !== budget.category) return;
         const txDate = parseISO(tx.date);
         if (!isWithinInterval(txDate, { start, end })) return;
@@ -98,3 +98,4 @@ export function BudgetAlerts({ budgets, transactions, accounts, getMultiplier }:
     </Card>
   );
 }
+

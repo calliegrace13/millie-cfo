@@ -1,0 +1,25 @@
+begin;
+create temp table awf as select id u,(select id from auth.users where id<>a.id limit 1) other,gen_random_uuid() adj,gen_random_uuid() review from auth.users a limit 1;
+grant select on awf to authenticated;
+set local role authenticated;
+do $$declare f record;blocked boolean;s jsonb:='{"start":"2095-01-01","end":"2095-03-31","view":"mine","basis":"recorded","currency":"USD","accountIds":null}';p jsonb:='{"income":0,"expense":-20,"reason":"Test rationale","sourceIds":[]}';begin
+ select * into strict f from awf;perform set_config('request.jwt.claim.sub',f.u::text,true);
+ perform finance_save_analyst_workpaper(f.adj,0,'adjustment','Fixture',s,p,false);
+ perform finance_save_analyst_workpaper(f.adj,0,'adjustment','Fixture',s,p,false);
+ if (select count(*) from finance_analyst_history where record_id=f.adj)<>1 then raise exception 'Retry duplicated history';end if;
+ blocked:=false;begin perform finance_save_analyst_workpaper(f.adj,0,'adjustment','Changed',s,p,false);exception when raise_exception then blocked:=true;end;if not blocked then raise exception 'Stale revision accepted';end if;
+ perform finance_save_analyst_workpaper(f.adj,1,'adjustment','Fixture',s,p,true);
+ perform finance_save_analyst_workpaper(f.adj,2,'adjustment','Fixture',s,p,false);
+ if not exists(select 1 from finance_analyst_workpapers where id=f.adj and revision=3 and not archived) then raise exception 'Restore failed';end if;
+ blocked:=false;begin update finance_analyst_workpapers set name='Bypass' where id=f.adj;exception when insufficient_privilege then blocked:=true;end;if not blocked then raise exception 'Direct writes allowed';end if;
+ blocked:=false;begin perform finance_save_analyst_workpaper(gen_random_uuid(),0,'adjustment','Unknown source',s,jsonb_set(p,'{sourceIds}',jsonb_build_array(gen_random_uuid())),false);exception when raise_exception then blocked:=true;end;if not blocked then raise exception 'Unknown source accepted';end if;
+ blocked:=false;begin perform finance_save_analyst_workpaper(gen_random_uuid(),0,'adjustment','Missing reason',s,p-'reason',false);exception when raise_exception then blocked:=true;end;if not blocked then raise exception 'Missing rationale accepted';end if;
+ perform finance_save_analyst_workpaper(f.review,0,'review','Held review',s,'{"version":"1","summary":{"surplus":100}}',false);
+ blocked:=false;begin perform finance_save_analyst_workpaper(f.review,1,'review','Held review',s,'{"version":"1","summary":{"surplus":200}}',false);exception when raise_exception then blocked:=true;end;if not blocked then raise exception 'Saved review changed';end if;
+ if f.other is null then raise exception 'Second owner required';end if;perform set_config('request.jwt.claim.sub',f.other::text,true);
+ if exists(select 1 from finance_analyst_workpapers where id=f.adj) or exists(select 1 from finance_analyst_history where record_id=f.adj) then raise exception 'Private analysis disclosed';end if;
+ blocked:=false;begin perform finance_save_analyst_workpaper(f.adj,3,'adjustment','Hijacked',s,p,false);exception when raise_exception then blocked:=true;end;if not blocked then raise exception 'Foreign write accepted';end if;
+end;$$;
+reset role;
+select 'PASS private analyst records, command-only writes, idempotent retries, version conflict checks, archive/restore, source validation and held reviews' as result;
+rollback;

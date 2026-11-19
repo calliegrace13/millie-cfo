@@ -16,3 +16,4 @@ CREATE POLICY "Users can view own auto amortize categories" ON public.auto_amort
 CREATE POLICY "Users can insert own auto amortize categories" ON public.auto_amortize_categories FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Users can update own auto amortize categories" ON public.auto_amortize_categories FOR UPDATE USING (auth.uid() = user_id);
 CREATE POLICY "Users can delete own auto amortize categories" ON public.auto_amortize_categories FOR DELETE USING (auth.uid() = user_id);
+

@@ -260,3 +260,4 @@ export function SpendingAnalyzer({ transactions, accounts, getMultiplier }: Prop
     </div>
   );
 }
+

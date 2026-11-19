@@ -48,3 +48,4 @@ CREATE POLICY "Users can view own exercises" ON public.workout_exercises FOR SEL
 CREATE POLICY "Users can insert own exercises" ON public.workout_exercises FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Users can update own exercises" ON public.workout_exercises FOR UPDATE USING (auth.uid() = user_id);
 CREATE POLICY "Users can delete own exercises" ON public.workout_exercises FOR DELETE USING (auth.uid() = user_id);
+
