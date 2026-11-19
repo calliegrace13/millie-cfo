@@ -14,7 +14,7 @@ The always-free GitHub web editor opens when you press `.` on the repository pag
 
 ## Run and check
 
-Use Node.js 22. Run `npm ci`, then `npm run dev`. Build with `npm run build` and verify output with `npm run check:hosting`. Hosting tests use synthetic inputs and make no paid AI, Gmail, or bank calls.
+Use Node.js 22.12 or newer. Run `npm ci`, then `npm run dev`. Build with `npm run build` and verify output with `npm run check:hosting`. Hosting tests use synthetic inputs and make no paid AI, Gmail, or bank calls.
 
 ## Free Cloudflare hosting
 
