@@ -18,9 +18,13 @@ Use Node.js 22.12 or newer. Run `npm ci`, then `npm run dev`. Build with `npm ru
 
 ## Free Cloudflare hosting
 
-Use **Workers Free** and the included `workers.dev` address. Connect this GitHub repository with build command `npm run build && npm run check:hosting` and deploy command `npm run deploy:cloudflare`. The configuration serves static assets and supports direct links and refreshes. It provisions no Worker script, database, bucket, AI service, or scheduler. Do not upgrade Workers or buy a domain for this setup.
+Live app: https://millie-cfo.calliegrace13.workers.dev
 
-The existing Supabase backend holds accounts, preferences, financial records, server functions, credentials, and scheduled work. This repository contains code, not those records or secrets. Keep the existing app running during migration. Set up owner-only access on the new host and verify login, saved settings, reports, Gmail, AI, and background work before switching the main URL. Update Google OAuth callbacks and Supabase auth redirects for the exact new URL; retain old callbacks until cutover is verified.
+Use **Workers Free** and the included `workers.dev` address. The **Publish Millie to Cloudflare** GitHub Actions workflow builds, checks, and publishes changes pushed to `main`; it can also be run manually from **Actions**. Its repository variable `CLOUDFLARE_ACCOUNT_ID` identifies the account and its encrypted repository secret `CLOUDFLARE_API_TOKEN` authorizes deployment. The token has only Workers Scripts Edit and Account Settings Read permissions on this account and expires November 19, 2027. Renew that limited token in the repository secret before expiration. Do not use Cloudflare's broader automatically generated build token.
+
+The configuration serves static assets and supports direct links and refreshes. It provisions no Worker script, database, bucket, AI service, or scheduler. Public-repository standard GitHub Actions builds and this static hosting use free allowances. GitHub has a $0 spending block. Do not upgrade Workers, add paid overages, or buy a domain for this setup.
+
+The existing Supabase backend holds accounts, preferences, financial records, server functions, credentials, and scheduled work. This repository contains code, not those records or secrets. The public website uses Millie's existing account login and database access rules to protect records; no paid Cloudflare Access subscription is required. The original Site remains available during migration. Google OAuth callbacks, Supabase auth redirects, and the backend website allowlist include the new Cloudflare address. Keep the old callbacks until cutover is verified.
 
 ## Data and testing
 

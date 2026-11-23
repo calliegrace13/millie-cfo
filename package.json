@@ -8,7 +8,7 @@
     "dev": "vite",
     "dev:codespaces": "vite --host 0.0.0.0 --port 8080 --strictPort",
     "build": "vite build",
-    "check:hosting": "node tests/static-app-routes.mjs && node tests/email-callback.mjs --built && node tests/free-hosting.mjs",
+    "check:hosting": "node tests/static-app-routes.mjs && node tests/email-callback.mjs --built && node tests/free-hosting.mjs && node tests/integration-health.mjs",
     "deploy:cloudflare": "npx --yes wrangler@4.165.0 deploy",
     "preview:cloudflare": "npx --yes wrangler@4.165.0 dev --port 8787",
     "build:dev": "vite build --mode development",
