@@ -84,5 +84,5 @@ serve(async req=>{
   }
   const result={...checked,provider:b.provider,model:b.model};
   return reply({status:'succeeded',result});
- }catch(e){if(run&&admin)await admin.from('finance_ai_receipt_runs').update({status:'failed',finished_at:new Date().toISOString()}).eq('id',run).eq('owner_id',owner);const msg=e instanceof Error?e.message:'';return reply({error:/^(AI is off|Provider|The provider|Choose|Enter|Use readable|Import at most|Receipt|A suggested|AI connection|Your AI|Your model|Your provider|Your request|An analysis|Connect and select|Request ID|Connection changed|Unable to|Analysis completed)/.test(msg)?msg:'Unable to complete AI analysis. No automatic retry was made.'},400);}
+ }catch(e){if(run&&admin)await admin.from('finance_ai_receipt_runs').update({status:'failed',finished_at:new Date().toISOString()}).eq('id',run).eq('owner_id',owner);const msg=e instanceof Error?e.message:'';return reply({error:/^(AI is off|Provider|The provider|Choose|Enter|Use readable|Import at most|Receipt|A suggested|AI connection|Your AI|Your model|Your provider|Your request|Your current task|An analysis|Connect and select|Request ID|Connection changed|Unable to|Analysis completed)/.test(msg)?msg:'Unable to complete AI analysis. No automatic retry was made.'},400);}
 });
