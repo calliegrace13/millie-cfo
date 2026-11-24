@@ -86,7 +86,7 @@ serve(async req=>{
    for(const candidate of plan.options){
     const policy=policies.find((p:any)=>p.module===candidate.module),fingerprint=await digest({version:1,candidate,provider:connection.provider,model:connection.model,revision:policy?.revision});
     if(work.some((w:any)=>w.fingerprint===fingerprint))continue;
-    if(candidate.kind!=='sync'&&candidate.kind!=='receipts'&&connection.used>=connection.requestLimit)return end('limit','Paused at your AI request limit. Work resumes when allowance becomes available.',plan.attention);
+    if(candidate.kind!=='sync'&&candidate.kind!=='receipts'&&connection.requestLimitEnabled!==false&&connection.used>=connection.requestLimit)return end('limit','Paused at your AI request limit. Work resumes when allowance becomes available.',plan.attention);
     const result=await admin.from('finance_autopilot_work').insert({owner_id:owner,fingerprint,kind:candidate.kind,payload:{...candidate,provider:connection.provider,model:connection.model}}).select('*').single();if(result.error)throw Error('This work is already being prepared. Refresh its status.');chosen=result.data;break;
    }
   }

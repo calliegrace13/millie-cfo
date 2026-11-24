@@ -1,3 +1,4 @@
+import {aiUsageLabel} from '@/lib/ai-budget-mode';
 import {useAutomation} from '@/hooks/useAutomation';
 import {useState} from 'react';import {Link} from 'react-router-dom';
 import {aiRequest,useAIConnection,providerName} from '@/hooks/useAIConnection';import {Button} from '@/components/ui/button';
@@ -18,7 +19,7 @@ export function PatternAssistant({groups,onSuggest,hasDraft=()=>false,busy:paren
  if(!allowed)return <p className="text-sm text-muted-foreground">Merchant AI is off. Your guided review and saved rules still work. <Link className="underline" to="/customize#mode-transactions">Change task settings</Link></p>;
  return <details open={!!active} className="rounded-xl border bg-primary/5 p-4"><summary className="cursor-pointer font-medium text-sm">AI help for unresolved merchant categories</summary><div className="mt-3 space-y-3">
  <p className="text-sm text-muted-foreground">Millie already suggests familiar merchants without AI. Your provider can help with the ambiguous groups, starting with the ones that remove the most repetitive review. It never approves entries or creates future rules on its own.</p>
- {!active?<Link className="text-sm text-primary underline" to="/customize#ai-assistant">Connect your AI provider</Link>:<p className="text-sm">{providerName(active.provider)} · {active.model} · {active.used}/{active.requestLimit} requests in 24 hours</p>}
+ {!active?<Link className="text-sm text-primary underline" to="/customize#ai-assistant">Connect your AI provider</Link>:<p className="text-sm">{providerName(active.provider)} · {active.model} · {aiUsageLabel(active)}</p>}
  <label className="flex gap-2 text-sm"><input type="checkbox" checked={includeKnown} disabled={busy||checking} onChange={e=>setIncludeKnown(e.target.checked)}/>Also consider merchants Millie already categorized</label>
  <p className="text-sm">{candidates.length} merchant groups ready for this analysis · {candidates.reduce((n,g)=>n+g.count,0)} open purchases represented{!candidates.length&&!checking?' — review the existing suggestions below; AI is optional.':''}</p>
  <label className="flex gap-2 text-sm"><input type="checkbox" disabled={!active||busy} checked={consent} onChange={e=>setConsent(e.target.checked)}/>Send merchant names and up to three sample bank descriptions per group to my provider for a paid analysis. No balances, account records or full transaction history are included.</label>

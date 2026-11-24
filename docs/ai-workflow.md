@@ -32,7 +32,13 @@ rules. There is no automatic money movement, period close or sharing change.
 Evidence and policy fingerprints prevent unchanged reviews from being sent
 again just because time passed. Every call still reserves its maximum cost and
 checks the shared request allowance. A pass can span several allowance windows;
-the existing durable scheduler resumes it. Pause prevents new stages; a provider
+the existing durable scheduler resumes it. Connections can use **dollar budgets
+only**, with analysis counts shown as information, or retain an optional rolling
+request-count cap. Existing connections keep their chosen cap until changed;
+new connections default to dollar-only. Dollar reservations, verified pricing,
+concurrency protection and all daily/monthly ceilings apply in both modes.
+Receipt queues and the background planner honor the same mode. Changing modes
+does not change dollar budgets. Pause prevents new stages; a provider
 call already sent may finish.
 
 In the expanded workflow, a failed paid request remains failed. Its transaction
