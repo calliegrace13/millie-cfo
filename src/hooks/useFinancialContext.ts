@@ -1,13 +1,17 @@
 import {useMemo,useState} from 'react';
 import {useQuery,useQueryClient} from '@tanstack/react-query';
 import {useAuth} from './useAuth';
+import {useAutomation} from './useAutomation';
+import {useExperience} from './useExperience';
 import {financeDb,useHousehold} from './useHousehold';
 import {buildFinancialContext,contextNextSteps,EMPTY_CONTEXT,type ContextInventory,type ContextRecord} from '@/lib/financial-context';
 
 export function useFinancialContext(){
- const {user}=useAuth(),h=useHousehold(),qc=useQueryClient(),[saving,setSaving]=useState(false),key=['financial-context-v1',user?.id];
- const q=useQuery({queryKey:key,enabled:!!user,staleTime:30000,queryFn:async()=>{
+ const {user}=useAuth(),h=useHousehold(),qc=useQueryClient(),automation=useAutomation(),{experience}=useExperience(),[saving,setSaving]=useState(false),key=['financial-context-v2',user?.id,experience,automation.policy('transactions').revision];
+ const automatic=experience==='ai'&&automation.enabled('transactions','receipts');
+ const q=useQuery({queryKey:key,enabled:!!user&&!automation.loading,staleTime:30000,queryFn:async()=>{
   const inventory:ContextInventory={...EMPTY_CONTEXT,errors:[]};
+  if(automatic){const r=await financeDb.rpc('finance_auto_link_context_receipts');if(r.error)inventory.errors.push('automatic receipt linking');}
   async function rows(table:string,order='id'){const all:any[]=[];for(let from=0;;from+=1000){const r=await financeDb.from(table).select('*').eq('owner_id',user!.id).order(order).range(from,from+999);if(r.error)throw r.error;all.push(...r.data);if(r.data.length<1000)return all;}}
   // Each source fails independently; absence is never inferred from a failed read.
   await Promise.all([
@@ -23,5 +27,5 @@ export function useFinancialContext(){
   const r=await financeDb.rpc('finance_save_context',{_id:record.id,_expected:record.revision,_kind:record.kind,_title:record.title,_notes:record.notes,_start:record.starts_on||null,_end:record.ends_on||null,_transactions:record.transaction_ids,_archived:record.archived});
   if(r.error)throw Error(r.error.message);await qc.invalidateQueries({queryKey:key});return r.data;
  }finally{setSaving(false);}}
- return {owner,graph,steps,inventory:inv,loading:q.isPending||h.loading,error:h.error||q.error,saving,save,reload:async()=>{await Promise.all([h.reload(),q.refetch()]);},history:async(id:string)=>{const r=await financeDb.from('finance_context_history').select('revision,recorded_at,after_value').eq('owner_id',owner).eq('record_id',id).order('revision',{ascending:false});if(r.error)throw Error('Revision history could not load.');return r.data as any[];}};
+ return {owner,graph,steps,automatic,inventory:inv,loading:q.isPending||h.loading,error:h.error||q.error,saving,save,reload:async()=>{await Promise.all([h.reload(),q.refetch()]);},history:async(id:string)=>{const r=await financeDb.from('finance_context_history').select('revision,recorded_at,after_value').eq('owner_id',owner).eq('record_id',id).order('revision',{ascending:false});if(r.error)throw Error('Revision history could not load.');return r.data as any[];}};
 }

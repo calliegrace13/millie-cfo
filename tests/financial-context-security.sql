@@ -1,6 +1,8 @@
 begin;
 create temp table cf as select id u,(select id from auth.users where id<>a.id limit 1) other,gen_random_uuid() account,gen_random_uuid() tx,gen_random_uuid() ctx,gen_random_uuid() run from auth.users a limit 1;
 grant select on cf to authenticated;
+-- This suite exercises the manual workflow; AI linking has a separate suite.
+update finance_ai_policies set mode='manual' where owner_id=(select u from cf) and module='transactions';
 insert into accounts(id,user_id,name,type,currency) select account,u,'Context fixture','credit','USD' from cf;
 insert into transactions(id,user_id,account_id,name,date,amount,category,pending,needs_review) select tx,u,account,'Context fixture',date '2095-01-01',100,'Other',false,true from cf;
 set local role authenticated;

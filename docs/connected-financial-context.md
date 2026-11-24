@@ -7,7 +7,7 @@ The context domain is an explanatory overlay on the authoritative accounting eng
 - `financial-context.ts` builds a deterministic read model from authorized records: receipts, dated account arrangements, payment/transfer pairs, offsets, accounting plans, recognition schedules, trips, life projects, recurring cash evidence, compensation and recoveries.
 - `useFinancialContext` loads each owner-private source independently. A failed source is unavailable, never reported as empty. Accounts and transactions use the existing retained-history and account-continuity adapter.
 - `finance_context_records` stores private notes, types, service dates and explicit source IDs. Receipt payloads are immutable extracted evidence. User changes go through `finance_save_context`, with ownership validation, version checks, idempotent replay, snapshots and revision history. Archive is reversible. Links to unavailable original sources remain inspectable; snapshots do not recreate ledger activity.
-- Existing successful receipt analyses are imported once, and future successful receipt runs capture their validated extracted results. No email body, credentials or additional provider calls are required. Matching is a suggestion until the user confirms the receipt-to-transaction link. A past category approval does not establish a receipt identity.
+- Existing successful receipt analyses are imported once, and future successful receipt runs capture their validated extracted results. No email body, credentials or additional provider calls are required. In AI mode, a sole noncompeting purchase candidate is linked automatically with recorded provenance. Manual mode and ambiguous matches retain user confirmation. A past category approval does not establish a receipt identity.
 - `connected-context.ts` gives the assistant bounded, explicitly linked facts for its selected owned transactions. It honors receipt-use consent, excludes other users, archived context and unconfirmed suggestions, and adds coverage disclaimers. Existing task authorization and request limits still govern analysis. Opening Context makes no AI calls.
 
 Private context remains available when an optional module is hidden. Editing the source in that module requires re-enabling its workspace. Module preferences never rewrite links or financial records. Existing public-table backup discovery includes both new context tables.
@@ -35,16 +35,34 @@ No new financial provider, calendar access, mailbox scope, background job or pai
 
 Receipt candidates match currency and the rounded total, within one day before
 through ten days after the receipt date. Merchant matches are preferred, then
-nearer dates rank first. Ranking does not establish identity: two different bank
+nearer dates rank first. Ranking does not merge identities: two different bank
 transaction IDs remain two purchases even when every displayed field matches.
 Repeated reads of the same application UUID appear once; pending holds are not
 offered as completed receipt purchases. Competing receipts require a choice.
+
+When Transactions & receipts is in AI mode with receipt assistance enabled,
+`finance_auto_link_context_receipts_for_owner` reconciles saved receipts after a
+complete bank update or receipt capture. Opening Connected context in the AI
+workspace also invokes the session-scoped RPC. This deterministic step uses no
+paid inference and works independently of paused paid automation. It links only
+one candidate when no other receipt competes or already links that transaction.
+The stored `link_source` and `link_basis` distinguish a merchant match from a sole
+amount/currency/date match. Owner scope, currency, dates, movements and account
+continuity are checked server-side. Matching never changes ledger categories,
+amounts, reconciliation or closed reports.
+
+Automatic links are labeled and include an **Undo automatic link** button. Undo
+uses the existing revision-checked save, records history, and suppresses further
+automatic linking for that receipt. Manually selecting a purchase clears that
+suppression. Existing manual links and archived evidence are preserved. The
+workspace AI/Manual selector remains a presentation preference; server background
+permissions continue to follow the module's saved AI mode.
 
 Saved evidence includes a **Bank data checks** explanation and expandable groups
 with identical account, bank date, amount and description. Each entry links to its
 own details. The list is explicitly a statement-review aid, not a duplicate verdict.
 It neither changes reports nor deletes transactions. Confirm the actual purchase
-before linking a receipt. If two entries appear in the feed but only one appears
+when reviewing an ambiguous receipt. If two entries appear in the feed but only one appears
 on the bank statement, investigate with the provider before excluding either.
 
 For an operator comparison, the scheduler-authenticated `bank-integrity` action
@@ -61,5 +79,8 @@ Run `npm run check:bank-data`. With a disposable local PostgreSQL database named
 can point to a local psql executable). The latter exercises the actual migration
 functions with synthetic fixtures and rolls back all test objects. CI runs both
 before publishing, using an isolated PostgreSQL service with no production data.
+`npm run test:context-auto-links` uses the same disposable database and exercises
+the actual SQL migration, permissions, replay, automatic provenance, Undo,
+competing receipts, pending charges, repeated purchases and free capture/sync hooks.
 
 `tests/financial-context.mjs` exercises privacy, suggestions, competing matches, currencies, movements, archives, absent sources, deduplication, connection errors and assistant consent. `tests/financial-context-security.sql` runs synthetic fixtures in a rollback transaction to verify RLS, command-only writes, version conflicts, replay, receipt provenance, unchanged ledger fields and saved evidence after source removal. Existing reporting, navigation and assistant tests protect the boundaries.

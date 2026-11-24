@@ -4,7 +4,7 @@ import type {Receipt} from '../../supabase/functions/_shared/receipt-contract';
 import {similarTransactionGroups} from './transaction-integrity';
 
 export type ContextKind='receipt'|'purchase'|'contract'|'person'|'life_event'|'other';
-export type ContextRecord={id:string;owner_id:string;kind:ContextKind;title:string;notes:string;starts_on:string|null;ends_on:string|null;transaction_ids:string[];receipt?:Receipt|null;source_key?:string|null;snapshots:Record<string,any>;archived:boolean;revision:number;updated_at:string};
+export type ContextRecord={id:string;owner_id:string;kind:ContextKind;title:string;notes:string;starts_on:string|null;ends_on:string|null;transaction_ids:string[];receipt?:Receipt|null;source_key?:string|null;link_source?:'manual'|'automatic';link_basis?:'merchant'|'amount_date'|null;auto_link_suppressed?:boolean;snapshots:Record<string,any>;archived:boolean;revision:number;updated_at:string};
 export type ContextInventory={records:ContextRecord[];trips:any[];tripLinks:any[];focus:any[];plans:any[];modules:any[];errors:string[];connections:null|{email:null|{mailbox:string;autoSync:boolean;lastSync:string|null;hasMore:boolean;windowDays:number};queuedEmails:number;banks:{name:string;lastSync:string|null}[]}};
 export const EMPTY_CONTEXT:ContextInventory={records:[],trips:[],tripLinks:[],focus:[],plans:[],modules:[],errors:[],connections:null};
 export type ContextLink={id:string;transactionId:string;entityId:string;kind:string;title:string;detail:string;state:'saved'|'automatic'|'suggested';href:string;recordId?:string;missing?:boolean};
@@ -19,7 +19,7 @@ export function buildFinancialContext(data:FinanceData, inv:ContextInventory, ow
  const add=(l:ContextLink)=>{if(!txMap.has(l.transactionId))return;const key=[l.transactionId,l.entityId,l.kind].join(':');if(seen.has(key))return;seen.add(key);links.push(l);};
  const entity=(id:string,kind:string,title:string,detail:string,ids:string[],href:string,state:ContextLink['state']='saved',recordId?:string)=>{for(const tx of new Set(ids))add({id:kind+':'+id+':'+tx,transactionId:tx,entityId:id,kind,title,detail,href,state,recordId});};
  const records=inv.records.filter(r=>r.owner_id===owner);
- for(const r of records.filter(r=>!r.archived))entity('context:'+r.id,r.kind,r.title,r.kind==='receipt'?'You linked this extracted receipt. '+(r.notes||''):r.notes||'Context you recorded.',r.transaction_ids,contextHref(r.id),'saved',r.id);
+ for(const r of records.filter(r=>!r.archived))entity('context:'+r.id,r.kind,r.title,r.kind==='receipt'?(r.link_source==='automatic'?'Millie linked this receipt automatically because only one purchase fit. ':'You linked this extracted receipt. ')+(r.notes||''):r.notes||'Context you recorded.',r.transaction_ids,contextHref(r.id),r.link_source==='automatic'?'automatic':'saved',r.id);
  const candidateReceipts=records.filter(r=>r.kind==='receipt'&&!r.archived&&!r.transaction_ids.length&&r.receipt&&Array.isArray(r.receipt.items));
  const purchases=transactions.filter(t=>t.amount>0&&!t.pending&&!isInternal(t)&&!['investment','loan'].includes(accountMap.get(t.account_id!)!.type)&&!['income','debt_principal','debt_payment','investment'].includes(t.classification_kind||''));
  const matches=receiptMatches(candidateReceipts.map(r=>r.receipt!),purchases,accounts);

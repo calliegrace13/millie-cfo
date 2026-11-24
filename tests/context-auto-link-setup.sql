@@ -1,0 +1,20 @@
+begin;
+do $$begin
+ if not exists(select 1 from pg_roles where rolname='anon') then create role anon;end if;
+ if not exists(select 1 from pg_roles where rolname='authenticated') then create role authenticated;end if;
+ if not exists(select 1 from pg_roles where rolname='service_role') then create role service_role;end if;
+end;$$;
+create schema auth;
+create table auth.users(id uuid primary key);
+create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
+grant usage on schema auth,public to authenticated,anon,service_role;
+create table accounts(id uuid primary key,user_id uuid,name text,type text,currency text,is_deleted boolean default false);
+create table transactions(id uuid primary key default gen_random_uuid(),user_id uuid,account_id uuid,name text,merchant_name text,date date,amount numeric,pending boolean,category text,classification_kind text,linked_transfer_id uuid);
+create table finance_ai_policies(owner_id uuid,module text,mode text,tasks text[]);
+create table finance_account_sharing(owner_id uuid,account_id uuid,duplicate_of uuid);
+create table finance_account_continuity(owner_id uuid,source_id uuid,original_id uuid,starts_on date);
+create table finance_ai_receipt_runs(id uuid primary key,owner_id uuid,status text,result jsonb);
+create table finance_email_connections(owner_id uuid,mailbox text,auto_sync boolean,last_synced_at timestamptz,sync_cursor text,window_days integer);
+create table finance_email_receipts(owner_id uuid,dismissed boolean,expires_at timestamptz);
+create table plaid_items(id uuid primary key,user_id uuid,institution_name text,last_synced_at timestamptz);
+create function finance_apply_sync_page(_item uuid,_lease uuid,_added jsonb,_modified jsonb,_removed jsonb,_cursor text) returns integer language sql as $$select 0$$;
