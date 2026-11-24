@@ -8,6 +8,9 @@ const data={accounts:[{id:'a',user_id:'me',name:'My card',type:'credit',currency
 const inv={...EMPTY_CONTEXT,records:[record,{...record,id:'other',owner_id:'partner',transaction_ids:['t']}],errors:[]};
 let graph=buildFinancialContext(data,inv,'me');assert.equal(graph.transactions.length,1);assert.equal(graph.records.length,1);assert.equal(graph.suggestions[0].unique,true);assert.equal(graph.links[0].state,'suggested');assert.equal(graph.explained.size,0);
 graph=buildFinancialContext({...data,transactions:[...data.transactions,{...tx,id:'duplicate'}]},inv,'me');assert.equal(graph.suggestions[0].unique,false);
+assert.equal(graph.similarGroups.length,1);assert.equal(graph.similarGroups[0].length,2,'Similar-looking rows stay available for statement review');
+graph=buildFinancialContext({...data,accounts:[...data.accounts,{...data.accounts[0],id:'other-card'}],transactions:[tx,{...tx,id:'separate',account_id:'other-card'}]},inv,'me');assert.equal(graph.similarGroups.length,0,'Different cards are not duplicate groups');
+graph=buildFinancialContext({...data,transactions:[tx,tx,{...tx,id:'hold',pending:true}]},inv,'me');assert.equal(graph.similarGroups.length,0,'Repeated UUIDs and pending holds do not manufacture posted duplicate groups');
 graph=buildFinancialContext({...data,accounts:[{...data.accounts[0],currency:'EUR'}]},inv,'me');assert.equal(graph.suggestions[0].candidates.length,0);
 graph=buildFinancialContext({...data,transactions:[{...tx,linked_transfer_id:'movement'}]},inv,'me');assert.equal(graph.suggestions[0].candidates.length,0);
 const linked={...record,transaction_ids:['t']};graph=buildFinancialContext(data,{...inv,records:[linked]},'me');assert.equal(graph.suggestions.length,0);assert.equal(graph.explained.size,1);assert.equal(graph.links[0].state,'saved');

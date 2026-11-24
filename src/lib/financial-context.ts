@@ -1,6 +1,7 @@
 import {allocationAt, isInternal, type FinanceData} from './household-finance';
 import {receiptMatches} from '../../supabase/functions/_shared/receipt-matching';
 import type {Receipt} from '../../supabase/functions/_shared/receipt-contract';
+import {similarTransactionGroups} from './transaction-integrity';
 
 export type ContextKind='receipt'|'purchase'|'contract'|'person'|'life_event'|'other';
 export type ContextRecord={id:string;owner_id:string;kind:ContextKind;title:string;notes:string;starts_on:string|null;ends_on:string|null;transaction_ids:string[];receipt?:Receipt|null;source_key?:string|null;snapshots:Record<string,any>;archived:boolean;revision:number;updated_at:string};
@@ -22,7 +23,7 @@ export function buildFinancialContext(data:FinanceData, inv:ContextInventory, ow
  const candidateReceipts=records.filter(r=>r.kind==='receipt'&&!r.archived&&!r.transaction_ids.length&&r.receipt&&Array.isArray(r.receipt.items));
  const purchases=transactions.filter(t=>t.amount>0&&!t.pending&&!isInternal(t)&&!['investment','loan'].includes(accountMap.get(t.account_id!)!.type)&&!['income','debt_principal','debt_payment','investment'].includes(t.classification_kind||''));
  const matches=receiptMatches(candidateReceipts.map(r=>r.receipt!),purchases,accounts);
- const suggestions=matches.map((m,i)=>({record:candidateReceipts[i],candidates:m.candidates,unique:m.unique}));
+ const suggestions=matches.map((m,i)=>({record:candidateReceipts[i],candidates:m.candidates,unique:m.unique,matchBasis:m.matchBasis,competingReceipt:m.competingReceipt}));
  for(const s of suggestions)for(const t of s.candidates)add({id:'suggestion:'+s.record.id+':'+t.id,transactionId:t.id,entityId:'context:'+s.record.id,kind:'receipt',title:s.record.title,detail:s.unique?'Merchant, amount, currency and purchase date fit. Confirm the actual purchase.':'Amount, currency and date fit; merchant evidence or competing matches need your choice.',state:'suggested',href:contextHref(s.record.id),recordId:s.record.id});
  for(const t of transactions){
   if(t.linked_transfer_id&&txMap.has(t.linked_transfer_id))entity('movement:'+t.linked_transfer_id,'movement','Linked payment / transfer',txMap.get(t.linked_transfer_id)!.name,[t.id],'/transactions#movements');
@@ -45,7 +46,7 @@ export function buildFinancialContext(data:FinanceData, inv:ContextInventory, ow
  for(const p of inv.modules)if(p.owner_id===owner)entity('module:'+p.id,p.domain==='income'?'paycheck':p.domain,p.name,'Saved '+p.kind+' source links'+(p.status==='archived'?' · Archived':''),p.payload.transactionIds||[],p.domain==='income'?'/compensation':p.domain==='investments'?'/investment-analysis':'/debt-payoff');
  const byTransaction=new Map<string,ContextLink[]>();for(const l of links){if(!byTransaction.has(l.transactionId))byTransaction.set(l.transactionId,[]);byTransaction.get(l.transactionId)!.push(l);}
  const explained=new Set(links.filter(l=>l.state!=='suggested'&&l.kind!=='household').map(l=>l.transactionId));
- return {accounts,transactions,records,links,byTransaction,suggestions,explained,missingLinks:records.flatMap(r=>r.transaction_ids.filter(id=>!txMap.has(id)).map(id=>({record:r,id,snapshot:r.snapshots[id]})))};
+ return {accounts,transactions,records,links,byTransaction,suggestions,explained,similarGroups:similarTransactionGroups(transactions),missingLinks:records.flatMap(r=>r.transaction_ids.filter(id=>!txMap.has(id)).map(id=>({record:r,id,snapshot:r.snapshots[id]})))};
 }
 
 // Dynamic tasks use observed evidence. "Recorded" is deliberately not "complete".

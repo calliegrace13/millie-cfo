@@ -10,6 +10,10 @@ for(const bad of [{...r,amount:20},{...r,currency:'INVALID'},{...r,date:'2026-02
 const accounts=[{id:'a',currency:'USD'},{id:'e',currency:'EUR'}],t={id:'1',date:'2026-10-13',amount:10.87,account_id:'a',merchant_name:'Amazon'},before=JSON.stringify(t);
 assert(receiptMatches([r],[t],accounts)[0].unique);assert.equal(JSON.stringify(t),before,'Analysis never mutates bank data');
 assert(!receiptMatches([r],[t,{...t,id:'2'}],accounts)[0].unique,'Equal charges require manual resolution');
+assert.equal(receiptMatches([r],[t,t],accounts)[0].candidates.length,1,'Repeated reads of one UUID are one purchase candidate');
+assert.equal(receiptMatches([r],[{...t,pending:true}],accounts)[0].candidates.length,0,'Pending holds cannot be confirmed as posted purchases');
+assert.deepEqual(receiptMatches([r],[{...t,id:'later',date:'2026-10-20'},{...t,id:'same-day',date:r.date},t],accounts)[0].candidates.map(t=>t.id),['same-day','1','later'],'Closeness is ranking, never permission to merge or auto-confirm');
+assert.equal(receiptMatches([r],[{...t,merchant_name:'Different merchant'}],accounts)[0].matchBasis,'amount_date');
 assert(!receiptMatches([r,{...r,reference:'another shipment'}],[t],accounts)[0].unique,'One bank charge cannot be allocated to multiple receipts');
 for(const bad of [{...t,amount:-10.87},{...t,account_id:'e'},{...t,date:'2026-10-25'}])assert.equal(receiptMatches([r],[bad],accounts)[0].candidates.length,0);
 assert.equal(receiptMatches([{...r,items:[...r.items,{name:'Soap',category:'Personal Care',evidence:'Soap'}]}],[t],accounts)[0].category,null,'Mixed orders are not assigned a whole-charge category');

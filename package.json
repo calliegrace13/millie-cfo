@@ -9,6 +9,8 @@
     "dev:codespaces": "vite --host 0.0.0.0 --port 8080 --strictPort",
     "build": "vite build",
     "check:hosting": "node tests/static-app-routes.mjs && node tests/email-callback.mjs --built && node tests/free-hosting.mjs && node tests/integration-health.mjs",
+    "check:bank-data": "node tests/bank-update.mjs && node tests/bank-integrity.mjs && node tests/financial-context.mjs && node tests/ai-receipts.mjs && node tests/durable-history.mjs",
+    "test:bank-ledger": "node tests/bank-ledger.mjs",
     "deploy:cloudflare": "npx --yes wrangler@4.165.0 deploy",
     "preview:cloudflare": "npx --yes wrangler@4.165.0 dev --port 8787",
     "build:dev": "vite build --mode development",

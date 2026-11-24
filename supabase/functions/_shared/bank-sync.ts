@@ -1,4 +1,5 @@
 import {classifyOwner} from './classification-service.ts';
+import {collectBankUpdate} from './bank-update.ts';
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { encode as encodeBase64, decode as decodeBase64 } from "https://deno.land/std@0.168.0/encoding/base64.ts";
 
@@ -72,7 +73,7 @@ function sanitizeDate(value: unknown): string | null {
 }
 
 // Decrypt access token using AES-GCM
-async function decryptToken(encryptedToken: string): Promise<string> {
+export async function decryptToken(encryptedToken: string): Promise<string> {
   const encryptionKey = Deno.env.get('TOKEN_ENCRYPTION_KEY');
   
   // If not encrypted (legacy tokens), require encryption key and fail
@@ -251,7 +252,7 @@ function validateTransaction(tx: any): ValidatedTransaction | null {
     amount,
     date,
     pending: typeof tx.pending === 'boolean' ? tx.pending : false,
-    provider_metadata:{primary:sanitizeString(tx.personal_finance_category?.primary,100),detailed:sanitizeString(tx.personal_finance_category?.detailed,150),confidence:sanitizeString(tx.personal_finance_category?.confidence_level,30),merchant_entity_id:sanitizeString(tx.merchant_entity_id,150),mcc:sanitizeString(String(tx.merchant_category_code||''),6),payment_channel:sanitizeString(tx.payment_channel,30)},
+    provider_metadata:{pending_transaction_id:sanitizeString(tx.pending_transaction_id,100),primary:sanitizeString(tx.personal_finance_category?.primary,100),detailed:sanitizeString(tx.personal_finance_category?.detailed,150),confidence:sanitizeString(tx.personal_finance_category?.confidence_level,30),merchant_entity_id:sanitizeString(tx.merchant_entity_id,150),mcc:sanitizeString(String(tx.merchant_category_code||''),6),payment_channel:sanitizeString(tx.payment_channel,30)},
     category: mapPlaidCategory(tx.personal_finance_category?.primary, name || undefined),
     plaid_primary_category: sanitizeString(tx.personal_finance_category?.primary, 100),
     subcategory: sanitizeString(tx.personal_finance_category?.detailed || tx.category?.[1], 200),
@@ -273,19 +274,10 @@ export async function syncItem(db:any,item:any,start?:string,end?:string) {
   };
   const rulesResult=await db.from('transaction_rules').select('*').eq('user_id',item.user_id).eq('is_active',true).order('priority',{ascending:false});if(rulesResult.error)throw rulesResult.error;
   const validate=(list:any[])=>list.map(tx=>{const v=validateTransaction(tx);if(!v)throw Error('Invalid bank transaction');return {...v,...applyRules(v.name,v.merchant_name,rulesResult.data||[])};});
-  let cursor=item.cursor||undefined,offset=0,more=true,pages=0;
-  const allAdded:any[]=[],allModified:any[]=[],allRemoved:any[]=[];
-  while(more&&pages<20){
-   const data=start&&end?await call('/transactions/get',{start_date:start,end_date:end,options:{count:500,offset}}):await call('/transactions/sync',{cursor,count:500});
-   const added=validate(data.transactions||data.added||[]),modified=validate(data.modified||[]);
-   allAdded.push(...added);allModified.push(...modified);allRemoved.push(...(data.removed||[]));
-   cursor=data.next_cursor;offset+=added.length;more=start?offset<data.total_transactions:!!data.has_more;pages++;
-   if(start&&more&&!added.length)throw Error('Incomplete bank import');
-  }
-  if(more)throw Error('Import exceeds a single run. Request a smaller history window.');
+  const update=await collectBankUpdate(call,item.cursor||undefined,start,end);
   // Commit the complete pagination sequence and final cursor atomically. If
   // Plaid invalidates pagination, retry starts from the unchanged saved cursor.
-  const applied=await db.rpc('finance_apply_sync_page',{_item:item.id,_lease:lease,_added:allAdded,_modified:allModified,_removed:allRemoved,_cursor:start?null:cursor});if(applied.error)throw applied.error;synced+=applied.data;
+  const applied=await db.rpc('finance_apply_sync_page',{_item:item.id,_lease:lease,_added:validate(update.added),_modified:validate(update.modified),_removed:update.removed,_cursor:update.cursor});if(applied.error)throw applied.error;synced+=applied.data;
   // Cached balances avoid a paid real-time balance request every scheduled run.
   const balances=await call('/accounts/get',{});
   for(const a of balances.accounts||[]){const r=await db.from('accounts').update({provider_institution_id:item.institution_id||null,provider_institution_name:item.institution_name||null,current_balance:sanitizeNumber(a.balances?.current),available_balance:sanitizeNumber(a.balances?.available)}).eq('user_id',item.user_id).eq('plaid_account_id',a.account_id).or('is_deleted.is.null,is_deleted.eq.false');if(r.error)throw r.error;}

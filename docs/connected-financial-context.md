@@ -31,6 +31,35 @@ Contracts, purchases, people and life events can be recorded now, with service d
 
 No new financial provider, calendar access, mailbox scope, background job or paid AI task is activated by deployment. The checklist reports recorded evidence, not verified completeness. Extracted evidence and notes are retained privately with history until explicitly managed; raw email expiry remains governed by the existing email service.
 
-## Verification
+## Receipt ambiguity and bank-data review
+
+Receipt candidates match currency and the rounded total, within one day before
+through ten days after the receipt date. Merchant matches are preferred, then
+nearer dates rank first. Ranking does not establish identity: two different bank
+transaction IDs remain two purchases even when every displayed field matches.
+Repeated reads of the same application UUID appear once; pending holds are not
+offered as completed receipt purchases. Competing receipts require a choice.
+
+Saved evidence includes a **Bank data checks** explanation and expandable groups
+with identical account, bank date, amount and description. Each entry links to its
+own details. The list is explicitly a statement-review aid, not a duplicate verdict.
+It neither changes reports nor deletes transactions. Confirm the actual purchase
+before linking a receipt. If two entries appear in the feed but only one appears
+on the bank statement, investigate with the provider before excluding either.
+
+For an operator comparison, the scheduler-authenticated `bank-integrity` action
+on `finance-maintenance` accepts one existing `item_id`. It reads cached Plaid
+history using `/transactions/get` and compares exact IDs and explicit pending
+links. It never refreshes a bank, updates a cursor, calls AI, or changes the ledger.
+Missing history alone is never deletion evidence. The response stays behind the
+existing server scheduler authentication and includes no bank credentials.
+
+## Regression checks
+
+Run `npm run check:bank-data`. With a disposable local PostgreSQL database named
+`millie_bank_test*`, set `PG_TEST_URL` and run `npm run test:bank-ledger` (`PSQL_BIN`
+can point to a local psql executable). The latter exercises the actual migration
+functions with synthetic fixtures and rolls back all test objects. CI runs both
+before publishing, using an isolated PostgreSQL service with no production data.
 
 `tests/financial-context.mjs` exercises privacy, suggestions, competing matches, currencies, movements, archives, absent sources, deduplication, connection errors and assistant consent. `tests/financial-context-security.sql` runs synthetic fixtures in a rollback transaction to verify RLS, command-only writes, version conflicts, replay, receipt provenance, unchanged ledger fields and saved evidence after source removal. Existing reporting, navigation and assistant tests protect the boundaries.

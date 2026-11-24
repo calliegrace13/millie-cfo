@@ -8,6 +8,15 @@ A per-connection lease prevents overlapping imports. The complete Plaid paginati
 
 Imports use `/accounts/get` cached balances. They do not force a paid real-time balance refresh. The bank determines how fresh its data is. No Plaid refresh/webhook subscription was added.
 
+The update collector collapses repeated exact provider IDs, validates pagination,
+rejects cursor cycles and incomplete responses, and orders pending entries before
+posted entries. This lets the existing database promotion retain the original
+transaction UUID, categories, notes and evidence links even when the provider
+returns posted entries first. Distinct IDs with equal amounts are never merged by
+heuristics. Provider pending IDs are retained in private transaction metadata for
+future investigation. Every deployment runs bank-data and actual PostgreSQL replay
+tests; see `docs/connected-financial-context.md` for the statement-review process.
+
 Coverage panels show each user's connection state and available account-history dates. An earliest transaction date is not a certified coverage boundary. Missing/private accounts cannot be discovered automatically. Partner connection metadata is not exposed. The report amount and CSV still require the user's statement verification.
 
 Limits: a single import accepts at most 20 pages of 500 records, and an edge execution can time out. Such a run must not be called a success. Large historical imports can be requested in smaller date windows. The backend may create records while balance refresh later fails; the failure message therefore refers to the last successful import timestamp, not an assertion that the database had no changes.

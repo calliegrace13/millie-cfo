@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {edgeModule} from './helpers/edge-module.mjs';
+const {compareBankSnapshot}=await import(edgeModule('_shared/bank-integrity.ts'));
+const a=[{id:'a',plaid_account_id:'pa'}];
+const tx={id:'one',plaid_transaction_id:'p1',account_id:'a',date:'2026-11-01',amount:3,name:'Transit',pending:false};
+let audit=compareBankSnapshot([tx,{...tx,id:'two',plaid_transaction_id:'p2'}],[{transaction_id:'p1'},{transaction_id:'p2'}],a);
+assert.equal(audit.all_ids_still_at_provider,1,'Repeated fares with distinct current bank IDs must survive');
+assert.deepEqual(audit.confirmed_pending_pairs,[]);
+audit=compareBankSnapshot([tx,{...tx,id:'two',plaid_transaction_id:'p2'}],[{transaction_id:'p2',pending_transaction_id:'p1',account_id:'pa',pending:false}],a);
+assert.deepEqual(audit.confirmed_pending_pairs,[{pending_id:'one',posted_id:'two'}]);
+assert.equal(audit.groups_with_missing_provider_ids,1);
+audit=compareBankSnapshot([tx,{...tx,id:'two',plaid_transaction_id:'p2',account_id:'other'}],[{transaction_id:'p2',pending_transaction_id:'p1',account_id:'pa',pending:false}],a);
+assert.deepEqual(audit.confirmed_pending_pairs,[],'A pending ID must never cross accounts');
+assert.deepEqual(compareBankSnapshot([tx],[],a).confirmed_pending_pairs,[],'Missing bank history alone is never proof');
+console.log('PASS bank comparison: exact provider IDs, genuine repeated purchases, explicit pending identity, account isolation, missing history is not deletion authority.');

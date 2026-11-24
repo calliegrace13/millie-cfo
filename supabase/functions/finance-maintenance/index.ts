@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { syncItem } from '../_shared/bank-sync.ts';
+import { syncItem, decryptToken } from '../_shared/bank-sync.ts';
+import { bankIntegrity } from '../_shared/bank-integrity.ts';
 import { integrationHealth } from '../_shared/integration-health.ts';
 import recoveryPublic from '../_shared/recovery-public.json' with {
   type: 'json'
@@ -25,6 +26,9 @@ serve(async (req)=>{
       error: 'Unauthorized'
     }, 401);
     const body = await req.json();
+    if (body.action === 'bank-integrity') {
+      return reply(await bankIntegrity(db, body.item_id, decryptToken));
+    }
     if (body.action === 'integration-health') {
       return reply(await integrationHealth(db, body.owner_id));
     }
