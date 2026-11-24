@@ -59,4 +59,17 @@ do $$declare u uuid:=gen_random_uuid();other_owner uuid:=gen_random_uuid();r jso
  if finance_ai_credit_status(u,'openai') is not null then raise exception 'Clear did not restore normal budget mode';end if;
  if has_function_privilege('authenticated','finance_ai_set_model(uuid,text,text,integer)','EXECUTE') or has_function_privilege('authenticated','finance_ai_credit_status(uuid,text)','EXECUTE') or has_table_privilege('authenticated','finance_ai_credits','SELECT') then raise exception 'Unsafe direct credit access';end if;
 end;$$;
+do $$declare u uuid:=gen_random_uuid();r jsonb;begin
+ insert into finance_ai_connections(owner_id,provider,model,credential,key_suffix,request_limit,request_limit_enabled) values(u,'openai','gpt-6.1-sol','fixture-key','test',1,false);
+ insert into finance_ai_settings values(u,'openai');insert into finance_ai_budgets values(u,100000000,100000000);
+ r:=finance_ai_reserve(u,gen_random_uuid(),repeat('7',64),repeat('8',64),1000,6000,false,'openai','gpt-6.1-sol');
+ if (r->>'reservedMicros')::bigint<>70192 then raise exception 'Wrong standard-rate reservation';end if;
+ perform finance_ai_settle(u,(r->>'id')::uuid,'{"input":1000,"cached":100,"cacheWrite":0,"output":200,"searches":0}',null);
+ if (select cost_micros from finance_ai_charges where run_id=(r->>'id')::uuid)<>4010 then raise exception 'Wrong standard settlement';end if;
+ update finance_ai_receipt_runs set status='succeeded' where id=(r->>'id')::uuid;
+ r:=finance_ai_reserve(u,gen_random_uuid(),repeat('9',64),repeat('0',64),1000,6000,true,'openai','gpt-6.1-sol');
+ if (r->>'reservedMicros')::bigint<>12890000 then raise exception 'Opaque research did not reserve long-context maximum';end if;
+ perform finance_ai_settle(u,(r->>'id')::uuid,'{"input":300000,"cached":1000,"cacheWrite":0,"output":100,"searches":1}',null);
+ if (select cost_micros from finance_ai_charges where run_id=(r->>'id')::uuid)<>1211700 then raise exception 'Wrong long-context settlement';end if;
+end;$$;
 rollback;

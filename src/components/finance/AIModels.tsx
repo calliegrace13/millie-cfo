@@ -58,7 +58,7 @@ export function AIModels({compact=false}:{compact?:boolean}){
    <Button size="sm" className="w-full" variant={active?'outline':'default'} disabled={busy||active||blocked||c.pricingReady===false} onClick={()=>void run(async()=>{await aiRequest({action:'choose',provider:c.provider});},providerName(c.provider)+' selected for upcoming tasks. A call already sent may finish on the previous model.')} aria-label={'Use '+c.model}>{active?'Selected':'Use '+(c.provider==='openai'?'OpenAI':'Claude')+(c.credit?' credit':'')}</Button>
    {!compact&&<><ModelEditor key={'model:'+c.revision} connection={c} busy={busy} run={run}/><CreditEditor key={'credit:'+(c.credit?.revision??0)} connection={c} busy={busy} run={run}/></>}
   </div>;})}</div>
-  {!compact&&<p className="text-xs text-muted-foreground">API credits belong to the provider account, not each model. ChatGPT subscriptions and API billing are separate. Credits do not increase Millie’s daily or monthly limits, and Millie won’t generate unnecessary work just to spend a credit.</p>}
+  {!compact&&<p className="text-xs text-muted-foreground">API credits belong to the provider account, not each model. Eligible ChatGPT plans can provide API credits after linking an API organization. Use a key from that organization. Credits do not increase Millie’s daily or monthly limits, and Millie won’t generate unnecessary work just to spend a credit. <a className="underline text-primary" href="https://platform.openai.com/settings/organization/billing/overview" target="_blank" rel="noreferrer">Check OpenAI credits & linked organization</a></p>}
   {message&&<p role="status" className="text-sm">{message}</p>}{error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
  </section>;
 }
