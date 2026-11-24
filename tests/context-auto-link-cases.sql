@@ -49,6 +49,11 @@ do $$declare x f;r uuid;r2 uuid;t uuid;n int;run uuid;begin
  if finance_auto_link_context_receipts_for_owner(x.owner)<>0 then raise exception 'Currency/date mismatch linked';end if;
  r:=pg_temp.receipt('Archived evidence',80);update finance_context_records set archived=true,revision=revision+1 where id=r;perform pg_temp.purchase('Archived evidence',80);
  if finance_auto_link_context_receipts_for_owner(x.owner)<>0 then raise exception 'Archived receipt linked';end if;
+ r:=pg_temp.receipt('Previously resolved receipt',85);t:=pg_temp.purchase('Previously chosen charge',85);
+ update finance_context_records set transaction_ids=array[t],revision=revision+1 where id=r;
+ r:=pg_temp.receipt('New unique merchant',85);t:=pg_temp.purchase('New unique merchant',85);
+ n:=finance_auto_link_context_receipts_for_owner(x.owner);
+ if n<>1 or not exists(select 1 from finance_context_records where id=r and transaction_ids=array[t]) then raise exception 'A resolved receipt competed for an unrelated charge';end if;
  -- Capture a complete multi-receipt analysis before matching; no first-row win.
  perform pg_temp.purchase('Batch purchase',90);run:=gen_random_uuid();
  insert into finance_ai_receipt_runs values(run,x.owner,'succeeded','{"receipts":[{"merchant":"Batch purchase","date":"2026-11-05","amount":90,"currency":"USD","reference":"A","items":[]},{"merchant":"Batch purchase","date":"2026-11-05","amount":90,"currency":"USD","reference":"B","items":[]}]}');

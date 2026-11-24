@@ -30,7 +30,7 @@ declare linked integer;begin
    cardinality(r.merchant_words)>0 and r.merchant_words<@finance_receipt_merchant_words(coalesce(t.merchant_name,'')||' '||t.name) merchant_fit
   from receipts r join transactions t on t.user_id=_owner
   join accounts a on a.id=t.account_id and a.user_id=_owner
-  where not coalesce(t.pending,false) and t.amount>0 and round(t.amount,2)=round(r.total,2)
+  where cardinality(r.transaction_ids)=0 and not coalesce(t.pending,false) and t.amount>0 and round(t.amount,2)=round(r.total,2)
    and a.currency=r.receipt->>'currency' and t.date between r.purchase_date-1 and r.purchase_date+10
    and a.type not in ('investment','loan') and t.linked_transfer_id is null
    and lower(coalesce(t.category,'')) not in ('transfer','credit card payment','reimbursement','settlement')
