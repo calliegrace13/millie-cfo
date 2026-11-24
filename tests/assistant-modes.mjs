@@ -24,3 +24,10 @@ const goal={...item,kind:'goal',transaction_id:'',account_id:'cash',name:'Emerge
 assert.equal(valid({...goal,evidence:[{source:2,quote:'Emergency fund target 10,000'}]},[...sources,{name:'Your answers',text:'Emergency fund target 10,000'}],'goals','plan').items[0].kind,'goal');
 const sql=fs.readFileSync(new URL('../supabase/migrations/20261025030000_module_ai_modes.sql',import.meta.url),'utf8');for(const task of ASSISTANT_TASKS)assert(sql.includes("'"+task.module+"'"));
 console.log('PASS all module capabilities, manual/task gates, complete evidence, wrong merchant, unknown dates, owner-provided asset assumptions, goal targets, duplicate and protected purchases.');
+
+const {assistantSchemaFor}=await import(edgeModule('_shared/assistant-contract.ts'));
+assert.deepEqual(assistantSchemaFor('close','review').properties.items.items.properties.kind.enum,['question','insight']);
+assert.deepEqual(assistantSchemaFor('transactions','patterns').properties.items.items.properties.kind.enum,['question','insight']);
+assert(assistantSchemaFor('transactions','categories').properties.items.items.properties.kind.enum.includes('category'));
+assert(assistantSchemaFor('assets','timing').properties.items.items.properties.kind.enum.includes('plan'));
+assert(!assistantSchemaFor('close','review').properties.items.items.properties.kind.enum.includes('category'));
