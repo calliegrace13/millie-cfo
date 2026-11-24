@@ -12,7 +12,8 @@ export function workflowPlan(x:any){
  const blockedAnswers=new Set(failed.map((w:any)=>w.payload?.answerId).filter(Boolean));
  const core=autopilotPlan({...x,transactions:x.transactions.filter((t:any)=>!blockedTx.has(t.id)),emails:x.emails.filter((e:any)=>!blockedReceipts.has(e.id))});
  core.eligible=core.eligible.filter((t:any)=>!blockedTx.has(t.id));
- core.options=core.options.filter(o=>o.kind!=='setup'&&!blockedAnswers.has(o.answerId));
+ core.options=core.options.filter(o=>o.kind!=='setup'&&!blockedAnswers.has(o.answerId)&&
+  !(o.kind==='close'&&failed.some((w:any)=>w.payload?.module===o.module&&w.payload?.task===o.task)));
  const available=autopilotPlan(x).available;
  const latest=available.map((t:any)=>t.date).sort().at(-1);
  if(latest){

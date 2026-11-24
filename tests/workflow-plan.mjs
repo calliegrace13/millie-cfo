@@ -10,6 +10,7 @@ assert(!workflowPlan({...input,policies:[]}).options.length,'Manual permissions 
 const failed={kind:'timing',status:'failed',payload:{module:'assets',task:'timing',transactionIds:['t']}};
 p=workflowPlan({...input,work:[failed]});assert(!p.options.some(o=>o.transactionIds?.includes('t')));assert(p.options.some(o=>o.module==='analyst'),'Independent reviews must continue after a failure');
 p=workflowPlan({...input,work:[{kind:'review',status:'failed',payload:{module:'analyst',task:'review'}}]});assert(!p.options.some(o=>o.module==='analyst'),'Failed review never gets an automatic paid retry');assert(p.options.some(o=>o.module==='rewards'));
+p=workflowPlan({...input,modules:[...input.modules,'close'],policies:[...input.policies,{module:'close',mode:'ai',tasks:['review']}],work:[{kind:'close',status:'failed',payload:{module:'close',task:'review'}}]});assert(!p.options.some(o=>o.kind==='close'),'Changed evidence must not implicitly retry a failed close check');
 p=workflowPlan({...input,work:[{kind:'receipts',status:'done',payload:{module:'transactions',task:'receipts',receiptIds:['earlier']},updated_at:'2026-11-22'}]});assert.notEqual(p.options[0].kind,'receipts','Other areas get a turn before more receipt batches');
 assert.equal(workflowPlan({...input,work:[{kind:'receipts',status:'failed',payload:{module:'transactions',task:'receipts',receiptIds:['e']}}]}).options.some(o=>o.kind==='receipts'),false);
 const one=workflowPlan(input).options.find(o=>o.module==='analyst').signature;
