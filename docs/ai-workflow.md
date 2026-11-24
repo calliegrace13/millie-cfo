@@ -62,3 +62,29 @@ the actual opt-in, lease and scheduler functions, including unchanged budgets,
 hidden tools, saved failures and legacy behavior. These checks run before every
 website publication. Provider, assistant and cost-control fixtures remain part
 of manual validation for orchestration changes.
+
+
+### Models and API credits
+
+Home’s workflow card and Customize → Models & credits show connected providers,
+their selected models, and a direct provider switch. Changing a model uses the
+saved encrypted key to list only available models with current verified pricing;
+no key needs to be pasted again and listing does not purchase AI inference.
+Switches preserve financial permissions, request-cap preferences, dollar budgets,
+and completed checkpoints. A live call must finish before a switch; an entirely
+unsent prepared task can be superseded, while metered work must recover first.
+
+A credit is a manually entered remaining USD balance and inclusive UTC expiry date.
+This is not a live provider balance or evidence that a grant covers a selected
+model. Check grant eligibility with the provider. Millie subtracts subsequent
+settled usage and all pending/uncertain reservations across that provider’s models.
+Refresh the entered balance if other apps use the same credits. Saving a refreshed
+balance checkpoints past settled charges without erasing pending reservations.
+
+While credit tracking is enabled, the server blocks new calls when the credit is
+expired or cannot cover the next maximum reservation. Existing cached results
+remain accessible. Credit exhaustion waits for an explicit balance update,
+provider switch, or removal of credit protection; it never silently falls back to
+another provider. Shared daily/monthly budgets continue to count gross API usage,
+including usage that a provider may cover with credits. Credits never raise those
+limits, reset the ledger, force unnecessary work, or retry failed paid tasks.

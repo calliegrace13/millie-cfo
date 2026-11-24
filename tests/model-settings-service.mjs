@@ -1,0 +1,22 @@
+import fs from 'node:fs';import assert from 'node:assert/strict';import ts from '../node_modules/typescript/lib/typescript.js';import {edgeModule} from './helpers/edge-module.mjs';
+const {protectAIKey}=await import(edgeModule('_shared/ai-vault.ts'));
+const secret=Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64');
+const env={SUPABASE_URL:'https://fixture.invalid',SUPABASE_ANON_KEY:'fixture',SUPABASE_SERVICE_ROLE_KEY:'fixture',MILLIE_ALLOWED_ORIGINS:'https://millie.invalid',AI_CREDENTIAL_ENCRYPTION_KEY:secret};
+globalThis.Deno={env:{get:k=>env[k]}};
+let owner='owner',authenticated=true,selected=null,modelFetches=0,found=true;
+const credential=await protectAIKey(secret,'synthetic-provider-key','owner','openai');
+const db={auth:{getUser:async()=>({data:{user:authenticated?{id:owner}:null}})},rpc:async(name,args)=>{assert.equal(name,'finance_ai_set_model');selected=args;return {error:null};},from:table=>{
+ const filters={};const chain={select:()=>chain,eq:(k,v)=>{filters[k]=v;return chain;},maybeSingle:async()=>{assert.equal(table,'finance_ai_connections');assert.equal(filters.owner_id,owner);return {data:found&&owner==='owner'?{credential,revision:4}:null};},gt:async()=>{assert.equal(table,'finance_ai_prices');return {data:[{model:'gpt-fixture',input_rate:1,output_rate:5},{model:'priced-but-unavailable',input_rate:1,output_rate:2}]};}};return chain;
+}};
+globalThis.__createClient=()=>db;globalThis.__serve=h=>globalThis.__handler=h;
+globalThis.fetch=async(url,options)=>{assert.equal(url,'https://api.openai.com/v1/models','Model settings must never purchase inference');assert.equal(options.headers.Authorization,'Bearer synthetic-provider-key');modelFetches++;return Response.json({data:[{id:'gpt-fixture'},{id:'gpt-unpriced'},{id:'gpt-image-fixture'}]});};
+let source=fs.readFileSync('supabase/functions/finance-ai/index.ts','utf8').replace(/import \{serve\}[^\n]+\n/,'const serve=globalThis.__serve;\n').replace(/import \{createClient\}[^\n]+\n/,'const createClient=globalThis.__createClient;\n');
+source=source.replace(/from ['"]\.\.\/_shared\/([^'"]+)['"]/g,(_,name)=>'from '+JSON.stringify(edgeModule('_shared/'+name)));
+await import('data:text/javascript;base64,'+Buffer.from(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ES2022,target:ts.ScriptTarget.ES2022}}).outputText).toString('base64'));
+const request=body=>globalThis.__handler(new Request('https://fixture.invalid',{method:'POST',headers:{origin:'https://millie.invalid','content-type':'application/json'},body:JSON.stringify(body)}));
+let r=await request({action:'models',provider:'openai'});assert.equal(r.status,200);const text=await r.text();assert(!text.includes('synthetic')&&!text.includes(credential),'Keys must never leave server');assert.deepEqual(JSON.parse(text).models,[{id:'gpt-fixture',inputRate:1,outputRate:5}]);
+r=await request({action:'model',provider:'openai',model:'gpt-fixture',expected:4});assert.equal(r.status,200);assert.deepEqual(selected,{_owner:'owner',_provider:'openai',_model:'gpt-fixture',_expected:4});
+selected=null;r=await request({action:'model',provider:'openai',model:'gpt-unpriced',expected:4});assert.equal(r.status,400);assert.equal(selected,null);
+owner='another';const before=modelFetches;r=await request({action:'models',provider:'openai'});assert.equal(r.status,400);assert.equal(modelFetches,before,'Another owner cannot load private saved keys');
+authenticated=false;assert.equal((await request({action:'models',provider:'openai'})).status,401);
+console.log('PASS saved-key model listing/switching, auth/owner isolation, no credential exposure, priced+available intersection, zero paid inference calls.');

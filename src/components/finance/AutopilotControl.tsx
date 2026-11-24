@@ -2,6 +2,7 @@ import {aiUsageLabel} from '@/lib/ai-budget-mode';
 import {useState} from 'react';
 import {Link} from 'react-router-dom';
 import {Sparkles,Pause,Play,Loader2} from 'lucide-react';
+import {AIModels} from './AIModels';
 import {AISpending} from './AISpending';
 import {useAutopilot,allowanceMessage} from '@/hooks/useAutopilot';
 import {useAIConnection,providerName} from '@/hooks/useAIConnection';
@@ -29,9 +30,10 @@ export function AutopilotControl(){
   <p className="text-sm text-muted-foreground max-w-3xl leading-relaxed">One start covers receipt evidence, open purchases, expense timing, and reviews across the tools you have enabled. Millie saves its progress, brings questions and proposals to Needs you, and continues with independent work when one task needs your input.</p>
   <div className="rounded-xl bg-secondary/40 p-4 text-sm space-y-2"><p>Starting enables AI analysis for all {coverage.length} available tasks in your enabled tools, using your connected {active?providerName(active.provider):'AI provider'} and existing request and dollar limits. Owned financial evidence and your permitted receipt context are used for analysis.</p><p className="text-muted-foreground">Your current automatic-save permissions stay in place. Other financial changes remain proposals. Hidden tools, web permissions, spending limits and partner access are preserved. Failed paid calls require an explicit retry.</p></div>
   <div className="flex flex-wrap gap-3 items-center">{active?<Button disabled={saving||a.busy||!ready} onClick={start}><Play className="h-4 w-4 mr-2"/>{saving?'Saving...':'Run Millie across my enabled tools'}</Button>:<Button asChild><Link to="/customize#ai-assistant">Connect your AI</Link></Button>}{on&&<Button variant="outline" disabled={saving||a.isPending} onClick={pause}><Pause className="h-4 w-4 mr-2"/>Pause after current task</Button>}<Button asChild variant="outline"><Link to="/assistant?scope=all">Needs you & saved results</Link></Button></div>
-  {on&&<p className="text-sm" role="status">{s?.status==='limit'?allowanceMessage(s.next_run_at):s?.summary}</p>}
+  {on&&<p className="text-sm" role="status">{s?.status==='limit'?(s.summary?.startsWith('Your AI credit')?s.summary:allowanceMessage(s.next_run_at)):s?.summary}</p>}
   {active&&<p className="text-xs text-muted-foreground">{active.model} / {aiUsageLabel(active)} A full pass can span several allowance windows; saved progress resumes automatically.</p>}
   <details className="rounded-xl border p-4"><summary className="cursor-pointer font-medium text-sm">Tasks and progress / {checked} of {coverage.length} areas have recent saved checks</summary><div className="grid sm:grid-cols-2 gap-x-6 divide-y mt-3">{coverage.map(t=><div className="py-3 flex items-center gap-3 text-sm" key={t.module+':'+t.id}><span className="flex-1">{t.name}</span><span className="text-xs text-muted-foreground">{t.state}</span></div>)}</div><p className="text-xs text-muted-foreground mt-3">These are saved checkpoints, not a promise that all records are complete. New evidence may need another pass. Checks rotate across task areas before processing more batches.</p></details>
+  <AIModels compact/>
   <AISpending compact/>
   <p className="text-xs text-muted-foreground">Work runs on the server while Millie is closed. Nothing moves money, closes a period or changes sharing automatically. The AI/Manual navigation switch chooses your workspace; this control starts or pauses background analysis.</p>
   {s?.last_finished_at&&<p className="text-xs text-muted-foreground">Last saved checkpoint: {new Date(s.last_finished_at).toLocaleString()}</p>}

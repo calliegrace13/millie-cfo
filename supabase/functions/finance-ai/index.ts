@@ -26,9 +26,22 @@ serve(async req=>{
   if(worker)owner=worker.owner;else{const {data:{user},error}=await client.auth.getUser();if(error||!user)return reply({error:'Sign in to use your AI connection.'},401);owner=user.id;}
   const raw=await req.text();if(raw.length>70000)return reply({error:'Import at most 50,000 characters of receipt text.'},413);const b=JSON.parse(raw);
   if(worker&&(b.action!=='analyze'||b.task==='patterns'))return reply({error:'Automatic work action is not allowed.'},403);
-  if(['probe','connect','choose','disconnect'].includes(b.action)){
+  if(['probe','connect','choose','disconnect','models','model'].includes(b.action)){
    if(!['openai','anthropic'].includes(b.provider))throw Error('Choose a supported provider.');
-   if(b.action==='choose'||b.action==='disconnect'){const r=await admin.rpc('finance_ai_choose',{_owner:owner,_provider:b.provider,_disconnect:b.action==='disconnect'});if(r.error)throw Error('Unable to update your connection. Refresh settings.');return reply({ok:true});}
+   if(b.action==='models'||b.action==='model'){
+    const saved=await admin.from('finance_ai_connections').select('credential,revision').eq('owner_id',owner).eq('provider',b.provider).maybeSingle();
+    if(saved.error||!saved.data)throw Error('Connect this provider first.');
+    const available=await models(b.provider,await crypt(saved.data.credential,owner!,b.provider,true));
+    const prices=await admin.from('finance_ai_prices').select('model,input_rate,output_rate').eq('provider',b.provider).gt('valid_until',new Date().toISOString());
+    if(prices.error)throw Error('Unable to load verified model prices.');
+    const supported=(prices.data||[]).filter((p:any)=>available.includes(p.model));
+    if(b.action==='models')return reply({models:supported.map((p:any)=>({id:p.model,inputRate:p.input_rate,outputRate:p.output_rate}))});
+    if(!supported.some((p:any)=>p.model===b.model))throw Error('Choose an available model with verified pricing.');
+    const changed=await admin.rpc('finance_ai_set_model',{_owner:owner,_provider:b.provider,_model:b.model,_expected:b.expected});
+    if(changed.error)throw Error(/^Your current task /.test(changed.error.message)?changed.error.message:'Your connection changed. Refresh before saving.');
+    return reply({ok:true});
+   }
+   if(b.action==='choose'||b.action==='disconnect'){const r=await admin.rpc('finance_ai_choose',{_owner:owner,_provider:b.provider,_disconnect:b.action==='disconnect'});if(r.error)throw Error(/^Your current task /.test(r.error.message)?r.error.message:'Unable to update your connection. Refresh settings.');return reply({ok:true});}
    if(typeof b.key!=='string'||b.key.length<20||b.key.length>1000||/[\r\n]/.test(b.key))throw Error('Enter a valid API key.');const available=await models(b.provider,b.key);
    if(b.action==='probe')return reply({models:available});
    if(b.consent!==true||!available.includes(b.model)||!Number.isInteger(b.requestLimit)||b.requestLimit<1||b.requestLimit>20)throw Error('Choose a model, request limit and consent to provider charges.');

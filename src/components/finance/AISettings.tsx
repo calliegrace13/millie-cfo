@@ -1,6 +1,7 @@
 import {aiUsageLabel} from '@/lib/ai-budget-mode';
 import {useState} from 'react';import {Link} from 'react-router-dom';import {Sparkles} from 'lucide-react';
 import {financeDb} from '@/hooks/useHousehold';
+import {AIModels} from './AIModels';
 import {AISpending} from './AISpending';
 import {useAIConnection,aiRequest,providerName,type AIProvider} from '@/hooks/useAIConnection';
 import {Button} from '@/components/ui/button';import {Input} from '@/components/ui/input';import {ChoiceField} from '@/components/ui/choice-field';
@@ -19,13 +20,15 @@ export function AISettings(){
  return <section id="ai-assistant" aria-label="Your AI assistant" className="rounded-2xl border bg-card p-5 space-y-4 scroll-mt-6"><div className="flex gap-3"><Sparkles className="h-5 w-5 text-primary mt-1"/><div><h2 className="text-lg font-semibold">Your AI, inside Millie</h2><p className="text-sm text-muted-foreground mt-1">Connect your provider once, then choose Manual or AI for each module. Enable only the tasks and evidence sources you want it to use. Missing facts stay in your work queue, and supported changes remain editable.</p></div></div>
  <p className="text-sm text-muted-foreground">Connect an API account below. ChatGPT Plus and Claude Pro subscriptions do not supply an API key for this connection. API usage is billed separately by your provider.</p>
  {q.isLoading&&<p role="status">Loading your connections…</p>}{q.error&&<p role="alert" className="text-sm text-destructive">AI settings could not load. <button className="underline" onClick={()=>q.refetch()}>Retry</button></p>}
- {q.data?.connections.map(c=><div key={c.provider} className="rounded-xl border p-3 space-y-2"><p className="font-medium text-sm">{providerName(c.provider)} · {q.data?.active===c.provider?'Active':'Saved'} · key ending {c.suffix}</p><p className="text-xs text-muted-foreground">{c.model} · {aiUsageLabel(c)}</p>
+ <AIModels/>
+ <details className="rounded-xl border p-4"><summary className="cursor-pointer text-sm font-medium">Advanced connection settings & optional request caps</summary><div className="mt-3 space-y-3">{q.data?.connections.map(c=><div key={c.provider} className="rounded-xl border p-3 space-y-2"><p className="font-medium text-sm">{providerName(c.provider)} · {q.data?.active===c.provider?'Active':'Saved'} · key ending {c.suffix}</p><p className="text-xs text-muted-foreground">{c.model} · {aiUsageLabel(c)}</p>
  <p className="text-xs text-muted-foreground">{c.requestLimitEnabled===false?'Your saved daily and monthly dollar budgets are the spending limits.':'An optional request-count cap is also enabled.'}</p><Button size="sm" variant="outline" disabled={busy} onClick={()=>act(async()=>{const r=await financeDb.rpc('finance_set_ai_limit_mode',{_provider:c.provider,_request_limited:c.requestLimitEnabled===false,_expected:c.revision});if(r.error)throw Error(r.error.message);setMessage('AI limit mode saved. Your dollar budgets are unchanged.');})}>{c.requestLimitEnabled===false?'Add an optional request cap':'Use dollar budgets only'}</Button>
  {c.requestLimitEnabled!==false&&<RequestLimit key={c.revision} current={c.requestLimit} busy={busy} save={limit=>act(async()=>{
   const result=await financeDb.rpc('finance_set_ai_request_limit',{_provider:c.provider,_limit:limit,_expected:c.revision});
   if(result.error)throw Error(result.error.message);
   setMessage('Request limit saved. Millie has checked when background work can resume.');
- })}/>}<div className="flex gap-2">{q.data?.active!==c.provider&&<Button size="sm" variant="outline" disabled={busy} onClick={()=>act(async()=>{await aiRequest({action:'choose',provider:c.provider});setMessage('Active provider updated.');})}>Use this provider</Button>}<Button size="sm" variant="ghost" disabled={busy} onClick={()=>act(async()=>{await aiRequest({action:'disconnect',provider:c.provider});setMessage('API key removed. Your financial history is unchanged.');})}>Disconnect and erase key</Button></div></div>)}
+ })}/>}<div className="flex gap-2"><Button size="sm" variant="ghost" disabled={busy} onClick={()=>act(async()=>{await aiRequest({action:'disconnect',provider:c.provider});setMessage('API key removed. Your financial history is unchanged.');})}>Disconnect and erase key</Button></div></div>)}
+ </div></details>
  <AISpending/>
  <details className="rounded-xl border p-4" open={!q.data?.connections.length}><summary className="cursor-pointer font-medium text-sm">Connect or replace a provider</summary><div className="mt-4 space-y-3">
  <label className="block text-sm">Provider<ChoiceField aria-label="AI provider" value={provider} disabled={busy} onChange={e=>{setProvider(e.target.value as AIProvider);setKey('');setModels([]);setModel('');setConsent(false);}}><option value="openai">OpenAI API</option><option value="anthropic">Claude API</option></ChoiceField></label>

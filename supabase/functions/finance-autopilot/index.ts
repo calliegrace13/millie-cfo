@@ -3,6 +3,7 @@ import {serve} from 'https://deno.land/std@0.168.0/http/server.ts';
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
 import {workerClient} from '../_shared/worker-context.ts';
 import {timingCandidate} from '../_shared/autopilot-plan.ts';
+import {workflowChecked} from '../_shared/workflow-replay.ts';
 import {workflowPlan} from '../_shared/workflow-plan.ts';
 import {digest,stageId} from '../_shared/assistant-provider.ts';
 import {receiptMatches} from '../_shared/receipt-matching.ts';
@@ -84,8 +85,9 @@ serve(async req=>{
   if(!chosen){
    if(!unified&&work.some((w:any)=>w.status==='failed'))return end('error','A task needs your attention before continuing. No automatic paid retry was made.',plan.attention);
    for(const candidate of plan.options){
-    const policy=policies.find((p:any)=>p.module===candidate.module),fingerprint=await digest({version:1,candidate,provider:connection.provider,model:connection.model,revision:policy?.revision});
-    if(work.some((w:any)=>w.fingerprint===fingerprint))continue;
+    const policy=policies.find((p:any)=>p.module===candidate.module),checked=await workflowChecked(candidate,policy?.revision,connection.provider,connection.model,work,digest);
+    if(checked.checked)continue;
+    const fingerprint=checked.fingerprint;
     if(candidate.kind!=='sync'&&candidate.kind!=='receipts'&&connection.requestLimitEnabled!==false&&connection.used>=connection.requestLimit)return end('limit','Paused at your AI request limit. Work resumes when allowance becomes available.',plan.attention);
     const result=await admin.from('finance_autopilot_work').insert({owner_id:owner,fingerprint,kind:candidate.kind,payload:{...candidate,provider:connection.provider,model:connection.model}}).select('*').single();if(result.error)throw Error('This work is already being prepared. Refresh its status.');chosen=result.data;break;
    }
@@ -137,10 +139,12 @@ serve(async req=>{
   const raw=e instanceof Error?e.message:'',message=/^(Your |The |This |Automatic |A |An |No |AI |Gmail|Email|Receipt|Select|Choose|Connect|Provider|Evidence|Assistant |Unable|Could not|Request)/.test(raw)?raw:'Automatic work could not finish. No automatic paid retry was made.';
   if(admin&&owner&&/still running|was paused or settings changed/.test(message)){if(lease)await admin.rpc('finance_autopilot_end',{_owner:owner,_lease:lease,_status:'working',_summary:message,_attention:[]});return reply({status:'working',summary:message});}
   const cost = /^Your AI dollar budget cannot cover the next task \(maximum cost \$(\d+\.\d{6})\)\.$/.exec(message);
-  if (admin && owner && lease && (cost || /^Your request limit /.test(message))) {
-   const required = cost ? Math.round(Number(cost[1]) * 1_000_000) : 0;
+  if (admin && owner && lease && (cost || /^Your (request limit |AI credit )/.test(message))) {
+   const creditCost = /^Your AI credit cannot cover the next task \(maximum cost \$(\d+\.\d{6})\)\.$/.exec(message);
+   const required = cost || creditCost ? Math.round(Number((cost || creditCost)![1]) * 1_000_000) : 0;
    const saved = await admin.rpc('finance_autopilot_wait', {_owner:owner, _lease:lease, _required:required, _attention:[]});
    if (saved.error) return reply({error:'Your automatic restart could not be scheduled.'},500);
+   if (/^Your AI credit /.test(message)) await admin.from('finance_autopilot_settings').update({summary:message}).eq('owner_id',owner).eq('status','limit');
    return reply({status:'limit'});
   }
   if(admin&&owner){if(workId)await admin.from('finance_autopilot_work').update({status:'failed',summary:message.slice(0,1800),updated_at:new Date().toISOString()}).eq('owner_id',owner).eq('id',workId);if(lease)await admin.rpc('finance_autopilot_end',{_owner:owner,_lease:lease,_status:'error',_summary:message,_attention:[]});}

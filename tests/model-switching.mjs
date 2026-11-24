@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';import {edgeModule} from './helpers/edge-module.mjs';
+const {workflowChecked}=await import(edgeModule('_shared/workflow-replay.ts'));
+const digest=async value=>JSON.stringify(value),candidate={kind:'review',module:'runway',task:'review',signature:['same-evidence']};
+const fingerprint=await digest({version:1,candidate,provider:'anthropic',model:'old',revision:3});
+const work=[{status:'done',fingerprint,payload:{...candidate,provider:'anthropic',model:'old'}}];
+assert((await workflowChecked(candidate,3,'openai','new',work,digest)).checked,'Switching models must preserve completed financial checks');
+assert(!(await workflowChecked({...candidate,signature:['new-evidence']},3,'openai','new',work,digest)).checked);
+assert(!(await workflowChecked(candidate,4,'openai','new',work,digest)).checked);
+assert(!(await workflowChecked(candidate,3,'openai','new',[{...work[0],status:'skipped'}],digest)).checked,'Unsent superseded tasks still need analysis');
+console.log('PASS model changes preserve paid checkpoints; new evidence/permissions get fresh checks.');
