@@ -24,6 +24,7 @@ do $$declare x f;blocked boolean;begin
  perform set_config('request.jwt.claim.sub',x.owner::text,true);
  perform finance_save_context(x.receipt,2,'receipt','Fixture Shop','',null,null,'{}',false);
  if finance_auto_link_context_receipts()<>0 or not exists(select 1 from finance_context_records where id=x.receipt and auto_link_suppressed and transaction_ids='{}' and link_source='manual') then raise exception 'Undo relinked the receipt';end if;
+ if exists(select 1 from finance_receipt_charge_links where transaction_id=x.tx) then raise exception 'Undo did not release the charge';end if;
  -- A replay of the original save after a timeout must not add another revision.
  perform finance_save_context(x.receipt,2,'receipt','Fixture Shop','',null,null,'{}',false);
  if (select revision from finance_context_records where id=x.receipt)<>3 then raise exception 'Undo replay failed';end if;
@@ -64,5 +65,27 @@ do $$declare x f;r uuid;r2 uuid;t uuid;n int;run uuid;begin
  r:=pg_temp.receipt('Later bank import',110);t:=pg_temp.purchase('Later bank import',110);
  perform finance_apply_sync_page(x.item,gen_random_uuid(),'[]','[]','[]','test');
  if not exists(select 1 from finance_context_records where id=r and transaction_ids=array[t]) then raise exception 'Bank import did not reconcile';end if;
+end;$$;
+do $$declare x f;r uuid;other_receipt uuid;t uuid;n int;blocked boolean;begin
+ select * into x from f;
+ r:=pg_temp.receipt('Exact date',120);t:=pg_temp.purchase('Exact date',120);perform pg_temp.purchase('Exact date',120,false,'2026-11-06');
+ n:=finance_auto_link_context_receipts_for_owner(x.owner);
+ if n<>1 or not exists(select 1 from finance_context_records where id=r and transaction_ids=array[t] and link_rule='same_day') then raise exception 'Unique same-day option did not beat another date';end if;
+ r:=pg_temp.receipt('Strong date',130);other_receipt:=pg_temp.receipt('Strong date',130,'USD','2026-11-06');t:=pg_temp.purchase('Strong date',130);
+ n:=finance_auto_link_context_receipts_for_owner(x.owner);
+ if n<>1 or not exists(select 1 from finance_context_records where id=r and transaction_ids=array[t]) or exists(select 1 from finance_context_records where id=other_receipt and cardinality(transaction_ids)>0) then raise exception 'Nearby receipt beat exact-date evidence or reused charge';end if;
+ r:=pg_temp.receipt('Same-day tie',140);perform pg_temp.purchase('Same-day tie',140);perform pg_temp.purchase('Same-day tie',140);
+ if finance_auto_link_context_receipts_for_owner(x.owner)<>0 then raise exception 'Two same-day charges were arbitrarily selected';end if;
+ -- Manual commands and direct server writes are constrained too, even when the
+ -- prior receipt is archived. Non-receipt context remains freely linkable.
+ r:=pg_temp.receipt('Manual conflict',130);
+ perform set_config('request.jwt.claim.sub',x.owner::text,true);
+ blocked:=false;begin perform finance_save_context(r,1,'receipt','Manual conflict','',null,null,array[t],false);exception when raise_exception then blocked:=true;end;
+ if not blocked then raise exception 'Manual command reused a charge';end if;
+ update finance_context_records set archived=true,revision=revision+1 where id=(select record_id from finance_receipt_charge_links where transaction_id=t);
+ blocked:=false;begin update finance_context_records set transaction_ids=array[t],revision=revision+1 where id=r;exception when raise_exception then blocked:=true;end;
+ if not blocked then raise exception 'Archiving released a receipt claim';end if;
+ perform finance_save_context(gen_random_uuid(),0,'purchase','Purchase context','',null,null,array[t],false);
+ if (select count(*) from finance_receipt_charge_links where transaction_id=t)<>1 then raise exception 'Claim integrity failed';end if;
 end;$$;
 rollback;

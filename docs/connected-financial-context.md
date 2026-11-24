@@ -14,7 +14,7 @@ Private context remains available when an optional module is hidden. Editing the
 
 ## User workflow
 
-Connections & setup opens **Next connections**, a prioritized evidence inventory and checklist. Module setup guides remain available. **Understand a transaction** shows its linked sources and distinguishes saved links, automatic trip assignments and unconfirmed receipt suggestions. **Saved evidence** supports linking, editing notes, archive/restore and revision history. Transactions and Receipts link into the same context workspace.
+Connections & setup opens **Next connections**, a prioritized evidence inventory and checklist. Module setup guides remain available. **Transaction context** shows linked sources and distinguishes saved links, automatic assignments and unconfirmed suggestions. The default **Needs review** view contains only active unlinked evidence. Completed links are retained under **Linked history**; **All evidence** and **Archived evidence** remain available through the filter. Transactions and Receipts link into the same context workspace.
 
 Contracts, purchases, people and life events can be recorded now, with service dates and selected transaction IDs. A contract note is not an accounting policy: the user must use Assets, bills & timing to create recognition schedules. Receipt linking can add evidence to a closed purchase without editing its original statement.
 
@@ -44,8 +44,13 @@ When Transactions & receipts is in AI mode with receipt assistance enabled,
 `finance_auto_link_context_receipts_for_owner` reconciles saved receipts after a
 complete bank update or receipt capture. Opening Connected context in the AI
 workspace also invokes the session-scoped RPC. This deterministic step uses no
-paid inference and works independently of paused paid automation. It links only
-one candidate when no other receipt competes or already links that transaction.
+paid inference and works independently of paused paid automation. It first narrows
+matching candidates to the receipt date when any same-day option exists. Exactly
+one such charge wins over nearby-date choices and nearby-date competing receipts.
+Two same-day charges or equally strong competing receipts remain for review.
+Without a same-day option, the previous sole-candidate rule applies.
+Matching repeats until no further unclaimed candidates can be linked (at most 50
+passes per invocation). Existing user links and Undo suppression remain protected.
 The stored `link_source` and `link_basis` distinguish a merchant match from a sole
 amount/currency/date match. Owner scope, currency, dates, movements and account
 continuity are checked server-side. Matching never changes ledger categories,
@@ -54,7 +59,12 @@ amounts, reconciliation or closed reports.
 Automatic links are labeled and include an **Undo automatic link** button. Undo
 uses the existing revision-checked save, records history, and suppresses further
 automatic linking for that receipt. Manually selecting a purchase clears that
-suppression. Existing manual links and archived evidence are preserved. The
+suppression. Existing manual links and archived evidence are preserved. A private
+`finance_receipt_charge_links` table has a unique transaction key and a context
+trigger maintains it for every write, so manual edits, background linking and
+concurrent requests cannot attach a charge to two receipts. Archiving preserves
+the reservation; explicitly unlinking releases it. Other context kinds can still
+explain the same charge. The
 workspace AI/Manual selector remains a presentation preference; server background
 permissions continue to follow the module's saved AI mode.
 
