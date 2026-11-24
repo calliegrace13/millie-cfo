@@ -1,4 +1,4 @@
-do $$declare u uuid:=gen_random_uuid();other uuid:=gen_random_uuid();blocked boolean;n int;begin
+do $$declare u uuid:=gen_random_uuid();other uuid:=gen_random_uuid();blocked boolean;n int;claimed jsonb;begin
  perform set_config('request.jwt.claim.sub',u::text,true);
  insert into finance_module_preferences values(u,array['analyst']);
  insert into finance_ai_policies values(u,'transactions','manual',array['categories'],array['categories'],false,false,1,now());
@@ -22,5 +22,12 @@ do $$declare u uuid:=gen_random_uuid();other uuid:=gen_random_uuid();blocked boo
  n:=finance_dispatch_autopilot();
  if n<>1 or not exists(select 1 from net.requests where body->>'workerOwner'=u::text) or exists(select 1 from net.requests where body->>'workerOwner'=other::text) then raise exception 'Scheduler expanded a legacy user or blocked opted-in independent work';end if;
  if not exists(select 1 from finance_autopilot_settings where owner_id=other and workflow_scope='core') then raise exception 'Legacy default changed';end if;
+ claimed:=finance_autopilot_begin(u);perform finance_autopilot_end(u,(claimed->>'lease')::uuid,'working','Fixture result','[]');
+ if (select next_run_at from finance_autopilot_settings where owner_id=u)>clock_timestamp()+interval '1 second' then raise exception 'Unified work delayed an extra scheduler tick';end if;
+ claimed:=finance_autopilot_begin(u);perform finance_autopilot_end(u,(claimed->>'lease')::uuid,'error','Fixture invalid response','[]');
+ if (select next_run_at from finance_autopilot_settings where owner_id=u)>clock_timestamp()+interval '61 seconds' then raise exception 'Independent tasks blocked for 15 minutes';end if;
+ claimed:=finance_autopilot_begin(other);perform finance_autopilot_end(other,(claimed->>'lease')::uuid,'error','Legacy error','[]');
+ if (select next_run_at from finance_autopilot_settings where owner_id=other)<clock_timestamp()+interval '14 minutes' then raise exception 'Legacy error cadence changed';end if;
+
 end;$$;
 rollback;

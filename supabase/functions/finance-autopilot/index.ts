@@ -134,7 +134,7 @@ serve(async req=>{
   }
   const saved=await admin.from('finance_autopilot_work').update({status:'done',result,summary:summary.slice(0,1800),updated_at:new Date().toISOString()}).eq('owner_id',owner).eq('id',chosen.id);if(saved.error)throw Error('The result could not be checkpointed. Resume uses its existing request ID.');workId='';return end('working',summary,plan.attention);
  }catch(e){
-  const raw=e instanceof Error?e.message:'',message=/^(Your |The |This |Automatic |A |An |No |AI |Gmail|Email|Receipt|Select|Choose|Connect|Provider|Evidence|Unable|Could not|Request)/.test(raw)?raw:'Automatic work could not finish. No automatic paid retry was made.';
+  const raw=e instanceof Error?e.message:'',message=/^(Your |The |This |Automatic |A |An |No |AI |Gmail|Email|Receipt|Select|Choose|Connect|Provider|Evidence|Assistant |Unable|Could not|Request)/.test(raw)?raw:'Automatic work could not finish. No automatic paid retry was made.';
   if(admin&&owner&&/still running|was paused or settings changed/.test(message)){if(lease)await admin.rpc('finance_autopilot_end',{_owner:owner,_lease:lease,_status:'working',_summary:message,_attention:[]});return reply({status:'working',summary:message});}
   const cost = /^Your AI dollar budget cannot cover the next task \(maximum cost \$(\d+\.\d{6})\)\.$/.exec(message);
   if (admin && owner && lease && (cost || /^Your request limit /.test(message))) {

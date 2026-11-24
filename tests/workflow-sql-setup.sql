@@ -10,7 +10,7 @@ grant usage on schema auth,public to authenticated;
 create table finance_module_preferences(owner_id uuid primary key,enabled_modules text[]);
 create table finance_ai_policies(owner_id uuid,module text,mode text,tasks text[],auto_tasks text[],use_receipts boolean,use_web boolean,revision integer default 1,updated_at timestamptz,primary key(owner_id,module));
 create table finance_ai_policy_history(owner_id uuid,module text,revision integer,payload jsonb);
-create table finance_autopilot_settings(owner_id uuid primary key,enabled boolean,background_enabled boolean,provider text,model text,revision integer,status text,summary text,lease uuid,lease_until timestamptz,next_run_at timestamptz,last_started_at timestamptz,last_finished_at timestamptz,updated_at timestamptz,failure_count integer);
+create table finance_autopilot_settings(owner_id uuid primary key,enabled boolean,background_enabled boolean,provider text,model text,revision integer,status text,summary text,attention jsonb,lease uuid,lease_until timestamptz,next_run_at timestamptz,last_started_at timestamptz,last_finished_at timestamptz,updated_at timestamptz,failure_count integer);
 create table finance_autopilot_work(owner_id uuid,status text);
 create function finance_ai_status() returns jsonb language sql as $$select '{"active":"fixture","connections":[{"provider":"fixture","model":"fixture-model"}]}'::jsonb$$;
 create function finance_ai_cost_status() returns jsonb language sql as $$select jsonb_build_object('pricingReady',coalesce(nullif(current_setting('fixture.pricing',true),''),'true')::boolean,'budget',jsonb_build_object('daily_micros',coalesce(nullif(current_setting('fixture.daily',true),''),'1000000')::bigint,'monthly_micros',5000000))$$;
