@@ -2,7 +2,8 @@ import {categoryMayAutoApply} from '../_shared/learning-policy.ts';
 import {serve} from 'https://deno.land/std@0.168.0/http/server.ts';
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
 import {workerClient} from '../_shared/worker-context.ts';
-import {autopilotPlan,timingCandidate} from '../_shared/autopilot-plan.ts';
+import {timingCandidate} from '../_shared/autopilot-plan.ts';
+import {workflowPlan} from '../_shared/workflow-plan.ts';
 import {digest,stageId} from '../_shared/assistant-provider.ts';
 import {receiptMatches} from '../_shared/receipt-matching.ts';
 import {receiptCategories} from '../_shared/receipt-contract.ts';
@@ -64,9 +65,10 @@ serve(async req=>{
    (async()=>{const r=await admin.from('finance_email_connections').select('auto_sync,last_synced_at,sync_cursor,window_days').eq('owner_id',owner).maybeSingle();if(r.error)throw Error('Your Gmail preferences could not load.');return r.data;})(),
    (async()=>{const r=await client.from('finance_module_preferences').select('enabled_modules').eq('owner_id',owner).maybeSingle();if(r.error)throw Error('Your module choices could not load.');return r.data?.enabled_modules||['everyday','runway','goals','analyst','household','close','assets','rewards','income','investments','debt','longterm','watchlists','recoveries'];})(),rows('finance_learning_policies')
   ]);
-  const [budgets,cashSettings,moduleRecords]=await Promise.all([rows('finance_budget_versions'),rows('finance_cash_settings','*'),rows('finance_module_records')]);
+  const [budgets,cashSettings,moduleRecords,contextRecords]=await Promise.all([rows('finance_budget_versions'),rows('finance_cash_settings','*'),rows('finance_module_records'),settings.workflow_scope==='all_enabled'?rows('finance_context_records','id,revision,updated_at'):Promise.resolve([])]);
   const setupMissing={everyday:!budgets.length,runway:!cashSettings.length,goals:!documents.some((d:any)=>['goal','project'].includes(d.kind)),household:!sharing.length,income:!moduleRecords.some((r:any)=>r.domain==='income'),debt:!moduleRecords.some((r:any)=>r.domain==='debt'),investments:!moduleRecords.some((r:any)=>r.domain==='investments'),longterm:!moduleRecords.some((r:any)=>r.domain==='long_term')};
-  const plan=autopilotPlan({owner,accounts,transactions,documents,plans,sharing,continuity,offsets,policies,modules,work,items,emails,connection:mail,setupMissing,learningPolicies,now:Date.now()});
+  const unified=settings.workflow_scope==='all_enabled';
+  const plan=workflowPlan({workflowScope:settings.workflow_scope,owner,accounts,transactions,documents,plans,sharing,continuity,offsets,policies,modules,work,items,emails,connection:mail,setupMissing,learningPolicies,budgets,cashSettings,moduleRecords,contextRecords,now:Date.now()});
   const canReceipt=policies.some((p:any)=>p.module==='transactions'&&p.mode==='ai'&&p.tasks.includes('receipts'));
   const autoReceipt=canReceipt&&policies.some((p:any)=>p.module==='transactions'&&p.auto_tasks.includes('receipts'));
   // Reconcile saved receipt evidence against new bank imports without another AI call.
@@ -80,7 +82,7 @@ serve(async req=>{
   const incomplete=work.find((w:any)=>w.status==='running');
   let chosen:any=incomplete;
   if(!chosen){
-   if(work.some((w:any)=>w.status==='failed'))return end('error','A task needs your attention before continuing. No automatic paid retry was made.',plan.attention);
+   if(!unified&&work.some((w:any)=>w.status==='failed'))return end('error','A task needs your attention before continuing. No automatic paid retry was made.',plan.attention);
    for(const candidate of plan.options){
     const policy=policies.find((p:any)=>p.module===candidate.module),fingerprint=await digest({version:1,candidate,provider:connection.provider,model:connection.model,revision:policy?.revision});
     if(work.some((w:any)=>w.fingerprint===fingerprint))continue;
@@ -88,7 +90,7 @@ serve(async req=>{
     const result=await admin.from('finance_autopilot_work').insert({owner_id:owner,fingerprint,kind:candidate.kind,payload:{...candidate,provider:connection.provider,model:connection.model}}).select('*').single();if(result.error)throw Error('This work is already being prepared. Refresh its status.');chosen=result.data;break;
    }
   }
-  if(!chosen){const failed=work.filter((w:any)=>w.status==='failed');if(failed.length)return end('error','A task needs your attention before any paid retry.',plan.attention);return end(items.some((i:any)=>i.status==='needs_input')||plan.attention.some((x:any)=>!x.optional)?'needs_input':'idle','Current automatic checks are complete. Saved questions and proposals remain for you; this is not a certified close.',plan.attention);}
+  if(!chosen){const failed=work.filter((w:any)=>w.status==='failed');if(failed.length&&!unified)return end('error','A task needs your attention before any paid retry.',plan.attention);return end(failed.length||items.some((i:any)=>i.status==='needs_input')||plan.attention.some((x:any)=>!x.optional)?'needs_input':'idle','Current automatic checks are complete. Saved questions and proposals remain for you; this is not a certified close.',plan.attention);}
   workId=chosen.id;const step=chosen.payload;
   const attempt=await admin.from('finance_autopilot_work').update({attempts:(chosen.attempts||0)+1,updated_at:new Date().toISOString()}).eq('owner_id',owner).eq('id',chosen.id);if(attempt.error)throw Error('Your work checkpoint could not be saved.');
   const taskPolicy=policies.find((p:any)=>p.module===step.module);if(taskPolicy?.mode!=='ai'||!taskPolicy.tasks.includes(step.task)||(step.module!=='transactions'&&!modules.includes(step.module))){await admin.from('finance_autopilot_work').update({status:'skipped',summary:'Task permission was turned off.'}).eq('owner_id',owner).eq('id',chosen.id);workId='';return end('working','A disabled task was left untouched.',plan.attention);}

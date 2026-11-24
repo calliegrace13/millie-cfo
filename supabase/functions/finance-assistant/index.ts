@@ -20,7 +20,7 @@ serve(async req=>{
   const auth=worker?{data:{user:{id:worker.owner}},error:null}:await client.auth.getUser();if(auth.error||!auth.data.user)return reply({error:'Sign in to use your assistant.'},401);const owner=auth.data.user.id;
   const raw=await req.text();if(raw.length>10000)return reply({error:'Use a shorter note.'},413);const b=JSON.parse(raw);
   if(b.transactionIds!==undefined&&(!Array.isArray(b.transactionIds)||!b.transactionIds.length||b.transactionIds.length>40||b.transactionIds.some((id:any)=>!uuid(id))))throw Error('Choose up to forty owned transactions.');
-  const task=taskDefinition(b.module,b.task);if(b.action!=='run'||!task||'href' in task||!uuid(b.requestId)||b.consent!==true)throw Error('Choose an available task and authorize analysis.');
+  const task=taskDefinition(b.module,b.task);if(b.action!=='run'||!task||'href' in task&&task.id!=='patterns'||!uuid(b.requestId)||b.consent!==true)throw Error('Choose an available task and authorize analysis.');
   const authorize=async()=>{if(worker)await workerIdentity(req,admin);const r=await admin.rpc('finance_ai_authorize_task',{_owner:owner,_module:b.module,_task:b.task});if(r.error)throw Error(r.error.message);return r.data;};
   let policy=await authorize();
   const found=await admin.from('finance_assistant_jobs').select('*').eq('id',b.requestId).eq('owner_id',owner).maybeSingle();if(found.error)throw Error('Could not load this run.');let job=found.data;

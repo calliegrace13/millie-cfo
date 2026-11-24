@@ -39,10 +39,14 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - run: npm run check:bank-data
+      - run: npm run check:workflow
       - run: npm run test:bank-ledger
         env:
           PG_TEST_URL: postgresql://postgres@127.0.0.1:55439/millie_bank_test
       - run: npm run test:context-auto-links
+        env:
+          PG_TEST_URL: postgresql://postgres@127.0.0.1:55439/millie_bank_test
+      - run: npm run test:workflow-sql
         env:
           PG_TEST_URL: postgresql://postgres@127.0.0.1:55439/millie_bank_test
       - run: npm run build

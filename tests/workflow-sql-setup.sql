@@ -1,0 +1,23 @@
+begin;
+do $$begin
+ if not exists(select 1 from pg_roles where rolname='anon') then create role anon;end if;
+ if not exists(select 1 from pg_roles where rolname='authenticated') then create role authenticated;end if;
+ if not exists(select 1 from pg_roles where rolname='service_role') then create role service_role;end if;
+end;$$;
+create schema auth;
+create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
+grant usage on schema auth,public to authenticated;
+create table finance_module_preferences(owner_id uuid primary key,enabled_modules text[]);
+create table finance_ai_policies(owner_id uuid,module text,mode text,tasks text[],auto_tasks text[],use_receipts boolean,use_web boolean,revision integer default 1,updated_at timestamptz,primary key(owner_id,module));
+create table finance_ai_policy_history(owner_id uuid,module text,revision integer,payload jsonb);
+create table finance_autopilot_settings(owner_id uuid primary key,enabled boolean,background_enabled boolean,provider text,model text,revision integer,status text,summary text,lease uuid,lease_until timestamptz,next_run_at timestamptz,last_started_at timestamptz,last_finished_at timestamptz,updated_at timestamptz,failure_count integer);
+create table finance_autopilot_work(owner_id uuid,status text);
+create function finance_ai_status() returns jsonb language sql as $$select '{"active":"fixture","connections":[{"provider":"fixture","model":"fixture-model"}]}'::jsonb$$;
+create function finance_ai_cost_status() returns jsonb language sql as $$select jsonb_build_object('pricingReady',coalesce(nullif(current_setting('fixture.pricing',true),''),'true')::boolean,'budget',jsonb_build_object('daily_micros',coalesce(nullif(current_setting('fixture.daily',true),''),'1000000')::bigint,'monthly_micros',5000000))$$;
+create function finance_ai_reap() returns void language plpgsql as $$begin return;end;$$;
+create schema vault;
+create table vault.decrypted_secrets(name text,decrypted_secret text);
+insert into vault.decrypted_secrets values('millie_scheduler_token','fixture-only-not-a-real-secret');
+create schema net;
+create table net.requests(body jsonb);
+create function net.http_post(url text,headers jsonb,body jsonb,timeout_milliseconds integer) returns bigint language plpgsql as $$begin insert into net.requests values(body);return 1;end;$$;
