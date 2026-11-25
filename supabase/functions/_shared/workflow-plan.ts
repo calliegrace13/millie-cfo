@@ -33,16 +33,22 @@ export function workflowPlan(x:any){
  if(x.reconciliationEnabled){
   const seen=new Set<string>();
   for(const q of [...x.items].reverse()){
-   const id=q.payload?.transaction_id;if(q.status!=='needs_input'||q.answer||!id||seen.has(id)||!['transactions','assets'].includes(q.module)||blockedTx.has(id))continue;
-   const t=available.find((t:any)=>t.id===id);if(!t)continue;
+   const id=q.payload?.transaction_id,key=q.module+':'+q.task+':'+id;if(q.status!=='needs_input'||q.answer||!id||seen.has(key)||!((q.module==='transactions'&&q.task==='categories')||(q.module==='assets'&&q.task==='timing'))||blockedTx.has(id))continue;
+   const t=core.eligible.find((t:any)=>t.id===id);if(!t)continue;
    const p=x.policies.find((p:any)=>p.module===q.module);if(p?.mode!=='ai'||!p.tasks.includes(q.task))continue;
    const records=(x.contextRecords||[]).filter((r:any)=>!r.archived&&r.transaction_ids?.includes(id));
    const links=(x.tripLinks||[]).filter((l:any)=>l.transaction_id===id&&!l.excluded&&l.trip_id);
    const words=String(t.merchant_name||t.name||'').toLowerCase().match(/[a-z]{4,}/g)||[];
    const calendar=(x.calendarEvents||[]).filter((e:any)=>e.payload.starts_on<=t.date&&e.payload.ends_on>=t.date&&words.some((word:string)=>!['payment','purchase','online','hotel','flight','reservation'].includes(word)&&String(e.payload.title+' '+e.payload.location).toLowerCase().includes(word)));
-   if(!records.length&&!links.length&&!calendar.length)continue;seen.add(id);
+   if(!records.length&&!links.length&&!calendar.length)continue;seen.add(key);
    const scope=quarterBounds(t.date);
-   core.options.push({kind:'resolve',module:q.module,task:q.task,transactionIds:[id],questionIds:[q.id],start:scope.start,end:scope.end,signature:{question:[q.id,q.revision],calendar:calendar.map((e:any)=>[e.event_id,e.updated_at]),records:records.map((r:any)=>[r.id,r.revision]),trips:links.map((l:any)=>[l.trip_id,l.revision,(x.trips||[]).find((t:any)=>t.id===l.trip_id)?.revision])}} as any);
+   const stable=(rows:any[])=>rows.sort((a,b)=>String(a[0]).localeCompare(String(b[0])));
+   const evidence={calendar:stable(calendar.map((e:any)=>[e.event_id,e.updated_at])),records:stable(records.map((r:any)=>[r.id,r.revision])),trips:stable(links.map((l:any)=>[l.trip_id,l.revision,(x.trips||[]).find((t:any)=>t.id===l.trip_id)?.revision]))};
+   // A replacement question is not new evidence. Reuse this guard across model
+   // changes and older checkpoints so unanswered questions cannot spend in a loop.
+   const sameEvidence=(s:any)=>!!s&&JSON.stringify({calendar:stable([...(s.calendar||[])]),records:stable([...(s.records||[])]),trips:stable([...(s.trips||[])])})===JSON.stringify(evidence);
+   if(x.work.some((w:any)=>w.kind==='resolve'&&(w.status==='done'||w.status==='skipped'&&w.result?.manualSkip)&&w.payload?.module===q.module&&w.payload?.task===q.task&&w.payload?.transactionIds?.includes(id)&&sameEvidence(w.payload.signature)))continue;
+   core.options.push({kind:'resolve',module:q.module,task:q.task,transactionIds:[id],questionIds:[q.id],start:scope.start,end:scope.end,signature:evidence} as any);
   }
  }
  // Give each area a turn before draining the next receipt/category batch. Saved

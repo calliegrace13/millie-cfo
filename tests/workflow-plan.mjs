@@ -32,3 +32,12 @@ const evidenceQuestion={id:'question-fixture',revision:1,status:'needs_input',an
 const linked={...input,reconciliationEnabled:true,items:[evidenceQuestion],contextRecords:[{id:'evidence',revision:1,transaction_ids:['t']}]};
 const actualId=input.transactions.find(t=>t.user_id===input.owner)?.id;
 if(actualId){linked.items[0].payload.transaction_id=actualId;linked.contextRecords[0].transaction_ids=[actualId];assert(workflowPlan(linked).options.some(o=>o.kind==='resolve'));assert(!workflowPlan({...linked,reconciliationEnabled:false}).options.some(o=>o.kind==='resolve'));assert(!workflowPlan({...linked,contextRecords:[]}).options.some(o=>o.kind==='resolve'));}
+const resolve=workflowPlan(linked).options.find(o=>o.kind==='resolve');
+const checkedEvidence={kind:'resolve',status:'done',payload:{...resolve,signature:{...resolve.signature,question:['old-question',1]}}};
+const replacement={...evidenceQuestion,id:'new-question',revision:2};
+assert(!workflowPlan({...linked,items:[replacement],work:[checkedEvidence]}).options.some(o=>o.kind==='resolve'),'A replacement question or older checkpoint cannot trigger another paid check of unchanged evidence');
+assert(workflowPlan({...linked,items:[replacement],work:[checkedEvidence],contextRecords:[{...linked.contextRecords[0],revision:2}]}).options.some(o=>o.kind==='resolve'),'New receipt evidence can unlock another check');
+assert(!workflowPlan({...linked,items:[{...replacement,task:'patterns'}]}).options.some(o=>o.kind==='resolve'),'A single purchase cannot establish a recurring pattern');
+const twoModules={...linked,modules:[...linked.modules,'assets'],policies:[...linked.policies,{module:'assets',mode:'ai',tasks:['timing']}],items:[replacement,{...replacement,id:'timing-question',module:'assets',task:'timing'}]};
+assert.equal(workflowPlan(twoModules).options.filter(o=>o.kind==='resolve').length,2,'Timing and categorization questions for one purchase remain independent');
+assert(!workflowPlan({...linked,transactions:[{...linked.transactions[0],classification_locked:true}],documents:[{owner_id:'me',kind:'close',payload:{reviewScope:{start:'2026-10-01',end:'2026-12-31'}},status:'closed'}]}).options.some(o=>o.kind==='resolve'),'Closed purchases stay excluded');
