@@ -32,6 +32,14 @@ serve(async req=>{
    if(!validDate(b.start)||!validDate(b.end)||b.end<b.start||Date.parse(b.end)-Date.parse(b.start)>366*86400000||typeof b.note!=='string'||b.note.length>4000)throw Error('Choose a date window of up to one year and a note under 4,000 characters.');
    context=await assistantContext(client,owner,b.module,b.start,b.end,b.transactionIds,policy.use_receipts===true);context.provider=b.provider;context.model=b.model;context.receipts=policy.use_receipts;context.web=policy.use_web;context.window={start:b.start,end:b.end};
    if(b.note.trim())context.sources.push({name:'Your answers',text:b.note.trim()});
+   if(b.answerItems!==undefined){
+    if(!Array.isArray(b.answerItems)||!b.answerItems.length||b.answerItems.length>20||b.answerItems.some((a:any)=>!uuid(a.id)||!Number.isInteger(a.revision)))throw Error('Choose up to twenty saved answers.');
+    const qs=await admin.from('finance_assistant_items').select('id,module,task,payload,answer,status,revision').eq('owner_id',owner).in('id',b.answerItems.map((a:any)=>a.id));
+    if(qs.error||qs.data.length!==b.answerItems.length||qs.data.some((q:any)=>q.module!==b.module||q.task!==b.task||!q.answer?.trim()||q.status!=='needs_input'||q.revision!==b.answerItems.find((a:any)=>a.id===q.id)?.revision||(q.payload?.transaction_id?!b.transactionIds?.includes(q.payload.transaction_id):(q.payload?.scope?.start!==b.start||q.payload?.scope?.end!==b.end)))||new Set(qs.data.map((q:any)=>q.answer)).size!==1)throw Error('Your saved answers changed. Refresh before reviewing.');
+    context.answerItems=b.answerItems;
+    for(const q of qs.data)context.snapshot.answer_values[q.id]=q.answer;
+    context.sources.push({name:'Your answers',text:JSON.stringify({answer:qs.data[0].answer,appliesOnlyTo:qs.data.map((q:any)=>({id:q.id,transaction_id:q.payload?.transaction_id||null,question:q.payload?.question,scope:q.payload?.scope})),meaning:'The owner explicitly submitted this shared answer for these questions only. Respect any exceptions; do not turn it into a future merchant rule.'})});
+   }
    if(b.questionIds!==undefined){
     if(!Array.isArray(b.questionIds)||!b.questionIds.length||b.questionIds.length>20||b.questionIds.some((id:any)=>!uuid(id)))throw Error('Choose valid saved questions.');
     const qs=await admin.from('finance_assistant_items').select('id,module,task,payload,answer,status').eq('owner_id',owner).in('id',b.questionIds);

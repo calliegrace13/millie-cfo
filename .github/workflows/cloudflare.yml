@@ -58,6 +58,9 @@ jobs:
       - run: npm run test:recurring-context
         env:
           PG_TEST_URL: postgresql://postgres@127.0.0.1:55439/millie_bank_test
+      - run: npm run test:question-groups
+        env:
+          PG_TEST_URL: postgresql://postgres@127.0.0.1:55439/millie_bank_test
       - run: npm run build
       - run: npm run check:hosting
       - name: Publish tested static assets

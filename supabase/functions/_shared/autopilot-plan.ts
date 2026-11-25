@@ -1,8 +1,9 @@
 import {policyDecision} from './learning-policy.ts';
 import {closedForReview,quarterBounds} from './review-periods.ts';
 import {receiptEligible} from './receipt-eligibility.ts';
+import {groupedAnswerSteps} from './grouped-answer-plan.ts';
 export const timingCandidate=(t:any)=>/insurance|annual|tuition|deposit|furniture|computer|laptop|appliance|mattress|airline|flight|hotel|subscription/i.test((t.merchant_name||'')+' '+t.name);
-export type AutoStep={kind:string;module:string;task:string;transactionIds?:string[];receiptIds?:string[];start?:string;end?:string;questionIds?:string[];answerId?:string;answerRevision?:number;note?:string;signature:unknown;policySignatures?:Record<string,unknown>};
+export type AutoStep={kind:string;module:string;task:string;transactionIds?:string[];receiptIds?:string[];start?:string;end?:string;questionIds?:string[];answerId?:string;answerRevision?:number;answerItems?:{id:string;revision:number}[];note?:string;signature:unknown;policySignatures?:Record<string,unknown>};
 export function autopilotPlan(x:any){
  const {owner,accounts,transactions,documents,plans,sharing,continuity,offsets,policies,modules,work,items,emails,connection,now}=x;
  const enabled=(module:string,task:string)=>{const p=policies.find((p:any)=>p.module===module);return (module==='transactions'||modules.includes(module))&&p?.mode==='ai'&&p.tasks.includes(task);};
@@ -16,11 +17,7 @@ export function autopilotPlan(x:any){
  const evidence=(rows:any[])=>rows.map(t=>[t.id,t.updated_at,t.category,t.amount,t.date,t.account_id]);
  const touched=(kind:string,id:string)=>work.some((w:any)=>w.kind===kind&&(w.status==='done'||w.status==='skipped'&&w.result?.manualSkip)&&w.payload?.transactionIds?.includes(id)&&JSON.stringify(w.payload?.policySignatures?.[id]||[])===JSON.stringify(stamp(id)));
  const questionFor=(id:string)=>items.some((i:any)=>['needs_input','ready'].includes(i.status)&&i.payload?.transaction_id===id);
- for(const i of items.filter((i:any)=>i.status==='needs_input'&&i.answer?.trim()))if(enabled(i.module,i.task)){
-  const covered=work.some((w:any)=>w.kind==='answer'&&w.status==='done'&&w.payload.answerId===i.id&&w.payload.answerRevision===i.revision);if(covered)continue;
-  const t=transactions.find((t:any)=>t.id===i.payload?.transaction_id),scope=t?quarterBounds(t.date):i.payload?.scope;
-  if(scope)options.push({kind:'answer',module:i.module,task:i.task,start:scope.start,end:scope.end,transactionIds:t?[t.id]:undefined,answerId:i.id,answerRevision:i.revision,note:i.answer,signature:[i.id,i.revision,i.answer]});
- }
+ options.push(...groupedAnswerSteps(x,enabled));
  if(enabled('transactions','receipts')){
   const seen=new Set(work.filter((w:any)=>w.kind==='receipts'&&(w.status==='done'||w.status==='skipped'&&w.result?.manualSkip)).flatMap((w:any)=>w.payload.receiptIds||[]));
   const pending=emails.filter((e:any)=>!seen.has(e.id)).sort((a:any,b:any)=>a.sent_at.localeCompare(b.sent_at)||a.id.localeCompare(b.id)).slice(0,10);

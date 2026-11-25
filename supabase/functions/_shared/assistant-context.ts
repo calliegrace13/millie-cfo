@@ -42,7 +42,9 @@ export async function assistantContext(client:any,owner:string,module:string,sta
  for(const p of learningPolicies.filter((p:any)=>p.enabled&&(p.module==='all'||p.module===module)&&p.starts_on<=end&&(!p.ends_on||p.ends_on>=start)))sources.push({name:'Your confirmed policy',text:JSON.stringify(p)});
  // A saved answer remains useful after its original work item is completed.
  // Bind it to its purchase; never borrow coverage facts from another purchase.
- for(const a of answers.filter((a:any)=>a.answer?.trim()&&a.status!=='dismissed'&&tx.some((t:any)=>t.id===a.payload?.transaction_id)))sources.push({name:'Your answers',text:JSON.stringify({transaction_id:a.payload.transaction_id,question:a.payload.question,answer:a.answer,answer_revision:a.revision})});
+ const sameAnswers=new Map<string,any[]>();
+ for(const a of answers.filter((a:any)=>a.answer?.trim()&&a.status!=='dismissed'&&tx.some((t:any)=>t.id===a.payload?.transaction_id))){const members=sameAnswers.get(a.answer)||[];members.push({transaction_id:a.payload.transaction_id,question:a.payload.question,answer_revision:a.revision});sameAnswers.set(a.answer,members);}
+ for(const [answer,appliesOnlyTo] of sameAnswers)sources.push({name:'Your answers',text:JSON.stringify({answer,appliesOnlyTo})});
  sources.push(...await connectedContextSources(client,owner,tx.map((t:any)=>t.id),includeReceipts));
  sources.push(...await tripCalendarSources(client,owner,tx.map((t:any)=>t.id),start,end));
  const snapshot={learning_revision:learningState,answer_values:Object.fromEntries(answers.map((a:any)=>[a.id,a.answer])),transactions:Object.fromEntries(selected.map((t:any)=>[t.id,{id:t.id,updated_at:t.updated_at,amount:t.amount,date:t.date,account_id:t.account_id,category:t.category??null}])),budgets};

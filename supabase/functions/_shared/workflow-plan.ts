@@ -9,10 +9,10 @@ export function workflowPlan(x:any){
  const failed=x.work.filter((w:any)=>w.status==='failed');
  const blockedTx=new Set(failed.flatMap((w:any)=>w.payload?.transactionIds||[]));
  const blockedReceipts=new Set(failed.flatMap((w:any)=>w.payload?.receiptIds||[]));
- const blockedAnswers=new Set(failed.map((w:any)=>w.payload?.answerId).filter(Boolean));
+ const blockedAnswers=new Set(failed.flatMap((w:any)=>[w.payload?.answerId,...(w.payload?.answerItems||[]).map((a:any)=>a.id)]).filter(Boolean));
  const core=autopilotPlan({...x,transactions:x.transactions.filter((t:any)=>!blockedTx.has(t.id)),emails:x.emails.filter((e:any)=>!blockedReceipts.has(e.id))});
  core.eligible=core.eligible.filter((t:any)=>!blockedTx.has(t.id));
- core.options=core.options.filter(o=>o.kind!=='setup'&&!blockedAnswers.has(o.answerId)&&
+ core.options=core.options.filter(o=>o.kind!=='setup'&&!blockedAnswers.has(o.answerId)&&!o.answerItems?.some(a=>blockedAnswers.has(a.id))&&
   !(o.kind==='close'&&failed.some((w:any)=>w.payload?.module===o.module&&w.payload?.task===o.task)));
  const available=autopilotPlan(x).available;
  const latest=available.map((t:any)=>t.date).sort().at(-1);
