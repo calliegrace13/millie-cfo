@@ -33,6 +33,9 @@ const linked={...input,reconciliationEnabled:true,items:[evidenceQuestion],conte
 const actualId=input.transactions.find(t=>t.user_id===input.owner)?.id;
 if(actualId){linked.items[0].payload.transaction_id=actualId;linked.contextRecords[0].transaction_ids=[actualId];assert(workflowPlan(linked).options.some(o=>o.kind==='resolve'));assert(!workflowPlan({...linked,reconciliationEnabled:false}).options.some(o=>o.kind==='resolve'));assert(!workflowPlan({...linked,contextRecords:[]}).options.some(o=>o.kind==='resolve'));}
 const resolve=workflowPlan(linked).options.find(o=>o.kind==='resolve');
+const dateTrip={...linked,contextRecords:[],tripLinks:[{transaction_id:'t',trip_id:'trip',source:'date',manual:false}]};
+assert(!workflowPlan(dateTrip).options.some(o=>o.kind==='resolve'),'A date-only trip membership never spends AI credit to guess purchase details');
+assert(workflowPlan({...dateTrip,tripLinks:[{...dateTrip.tripLinks[0],source:'receipt'}]}).options.some(o=>o.kind==='resolve'),'Receipt-supported trip context can unlock a paid recheck');
 const checkedEvidence={kind:'resolve',status:'done',payload:{...resolve,signature:{...resolve.signature,question:['old-question',1]}}};
 const replacement={...evidenceQuestion,id:'new-question',revision:2};
 assert(!workflowPlan({...linked,items:[replacement],work:[checkedEvidence]}).options.some(o=>o.kind==='resolve'),'A replacement question or older checkpoint cannot trigger another paid check of unchanged evidence');

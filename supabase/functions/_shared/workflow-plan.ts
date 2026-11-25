@@ -37,7 +37,9 @@ export function workflowPlan(x:any){
    const t=core.eligible.find((t:any)=>t.id===id);if(!t)continue;
    const p=x.policies.find((p:any)=>p.module===q.module);if(p?.mode!=='ai'||!p.tasks.includes(q.task))continue;
    const records=(x.contextRecords||[]).filter((r:any)=>!r.archived&&r.transaction_ids?.includes(id));
-   const links=(x.tripLinks||[]).filter((l:any)=>l.transaction_id===id&&!l.excluded&&l.trip_id);
+   // Date-window membership is handled for free. It does not answer what an
+   // unrelated purchase bought, so it must not trigger a paid recheck by itself.
+   const links=(x.tripLinks||[]).filter((l:any)=>l.transaction_id===id&&!l.excluded&&l.trip_id&&(l.source==='receipt'||l.manual===true));
    const words=String(t.merchant_name||t.name||'').toLowerCase().match(/[a-z]{4,}/g)||[];
    const calendar=(x.calendarEvents||[]).filter((e:any)=>e.payload.starts_on<=t.date&&e.payload.ends_on>=t.date&&words.some((word:string)=>!['payment','purchase','online','hotel','flight','reservation'].includes(word)&&String(e.payload.title+' '+e.payload.location).toLowerCase().includes(word)));
    if(!records.length&&!links.length&&!calendar.length)continue;seen.add(key);
