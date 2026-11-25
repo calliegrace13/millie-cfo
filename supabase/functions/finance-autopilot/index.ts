@@ -18,7 +18,7 @@ serve(async req=>{
  let owner='',lease='',workId='';let admin:any;
  try{
   const raw=await req.text();if(raw.length>2000)throw Error('Request is too large.');const body=JSON.parse(raw);
-  if(!['step','retry','skip','recheck'].includes(body.action))throw Error('Choose an automatic work action.');
+  if(!['step','retry','retry-many','skip','recheck'].includes(body.action))throw Error('Choose an automatic work action.');
   admin=createClient(env('SUPABASE_URL'),env('SUPABASE_SERVICE_ROLE_KEY'));
   const background=typeof body.workerOwner==='string';
   let client:any=createClient(env('SUPABASE_URL'),env('SUPABASE_ANON_KEY'),{global:{headers:{Authorization:req.headers.get('authorization')||''}}});
@@ -29,6 +29,23 @@ serve(async req=>{
    owner=body.workerOwner;
    const preference=await admin.from('finance_autopilot_settings').select('enabled,background_enabled').eq('owner_id',owner).single();if(preference.error||!preference.data.enabled||!preference.data.background_enabled)return reply({paused:true});
   }else{const auth=await client.auth.getUser();if(auth.error||!auth.data.user)return reply({error:'Sign in to continue automatic work.'},401);owner=auth.data.user.id;}
+  if(body.action==='retry-many'){
+   if(!Array.isArray(body.ids)||!body.ids.length||body.ids.length>30||body.ids.some((id:any)=>typeof id!=='string'||!/^[0-9a-f-]{36}$/i.test(id)))throw Error('Choose up to thirty saved failed tasks.');
+   const status=await client.rpc('finance_ai_status');const connection=status.data?.connections?.find((c:any)=>c.provider===status.data.active);if(status.error||!connection)throw Error('Connect your AI before retrying.');
+   let queued=0;
+   for(const id of new Set(body.ids)){
+    const prior=await admin.from('finance_autopilot_work').select('request_id,payload,result,summary').eq('owner_id',owner).eq('id',id).eq('status','failed').maybeSingle();if(prior.error)throw Error('Your saved work could not be checked.');if(!prior.data)continue;
+    const paid=await admin.from('finance_ai_receipt_runs').select('status,response_cipher').eq('owner_id',owner).eq('request_id',prior.data.request_id).maybeSingle();
+    const research=await admin.from('finance_ai_receipt_runs').select('status').eq('owner_id',owner).eq('request_id',await stageId(prior.data.request_id,'research')).maybeSingle();
+    if(paid.error||research.error)throw Error('Your earlier paid attempts could not be checked.');
+    if(paid.data?.status==='running'||research.data?.status==='running')continue;
+    const recover=paid.data?.status==='succeeded'||paid.data?.response_cipher||!paid.data&&research.data?.status==='succeeded';
+    const saved=await admin.from('finance_autopilot_work').update({status:'running',request_id:recover?prior.data.request_id:crypto.randomUUID(),payload:{...prior.data.payload,provider:connection.provider,model:connection.model},result:{previousAttempt:{requestId:prior.data.request_id,summary:prior.data.summary},retryAuthorizedAt:new Date().toISOString()},summary:recover?'Recovering the saved response without another provider call.':'One new attempt authorized; every paid call still reserves within your limits.',updated_at:new Date().toISOString()}).eq('owner_id',owner).eq('id',id).eq('status','failed').select('id');
+    if(saved.error)throw Error('Your retry queue could not be saved.');queued+=saved.data?.length||0;
+   }
+   if(queued)await admin.from('finance_autopilot_settings').update({status:'ready',failure_count:0,next_run_at:new Date().toISOString()}).eq('owner_id',owner);
+   return reply({queued});
+  }
   if(body.action==='recheck'){
    await admin.from('finance_autopilot_settings').update({failure_count:0,next_run_at:new Date().toISOString()}).eq('owner_id',owner);
    const failed=await admin.from('finance_autopilot_work').select('id').eq('owner_id',owner).eq('status','failed').limit(1);if(failed.error)throw Error('Your saved work could not be checked.');if(failed.data.length)throw Error('A saved task needs review before retrying.');

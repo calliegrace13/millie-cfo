@@ -1,0 +1,25 @@
+import assert from 'node:assert/strict';import {edgeModule} from './helpers/edge-module.mjs';
+const {validateAssistantBatch}=await import(edgeModule('_shared/assistant-contract.ts'));
+const sources=[{name:'Purchase',text:'Transaction tx-1, merchant Transit, amount 5.00, date 2026-01-01.'}];
+const transactions=[{id:'tx-1',eligible:true,merchant:'Transit',amount:5}];
+const blank={title:'Transit purchase',explanation:'Recorded transit purchase.',question:'',transaction_id:'tx-1',category:'Transportation',name:'',start_date:'',end_date:'',amount:0,residual:0,plan_kind:'',currency:'',account_id:'',evidence:[{source:0,quote:'Transaction tx-1'}]};
+let r=validateAssistantBatch({summary:'Bounded review',items:[{...blank,kind:'category'},{...blank,transaction_id:'not-owned',kind:'category',evidence:[]}]},sources,'transactions','categories',transactions);
+assert.equal(r.items.filter(i=>i.kind==='category').length,1);assert.equal(r.items.filter(i=>i.kind==='question').length,1);assert.match(r.summary,/withheld/);
+r=validateAssistantBatch({summary:'Bounded review',items:[{...blank,kind:'category',evidence:[{source:0,quote:'invented merchant'}]}]},sources,'transactions','categories',transactions);
+assert.equal(r.items[0].kind,'question');assert.equal(r.items[0].transaction_id,'tx-1');assert(sources[0].text.includes(r.items[0].evidence[0].quote));
+r=validateAssistantBatch({summary:'Bounded review',items:[{...blank,kind:'insight',evidence:[]}]},sources,'runway','review',transactions);assert.equal(r.items[0].kind,'question');
+r=validateAssistantBatch({summary:'Close',items:[{...blank,kind:'category'}]},sources,'close','review',transactions);assert(!r.items.some(i=>i.kind==='category'));
+r=validateAssistantBatch({summary:'Bounded review',items:[{...blank,kind:'category'},{...blank,kind:'category'}]},sources,'transactions','categories',transactions);assert.equal(r.items.length,1);
+assert.throws(()=>validateAssistantBatch({summary:'x',items:'broken'},sources,'runway','review',transactions),/incomplete/);
+
+const {protectAIKey}=await import(edgeModule('_shared/ai-vault.ts'));
+const {assistantInference}=await import(edgeModule('_shared/assistant-provider.ts'));
+const secret=Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64');globalThis.Deno={env:{get:()=>secret}};
+let status='new',cipher=null,calls=0,updates=[],mode='valid',settled=0;
+const args={owner:'owner',requestId:'fixture-request',provider:'openai',model:'gpt-6.1-sol',input:'synthetic evidence',instructions:'Task',schema:{},validate:x=>{if(mode==='invalid')throw Error('Assistant evidence was incomplete.');return x;}};
+const admin={rpc:async name=>name==='finance_ai_reserve'?{data:{id:'run',status,provider:'openai',model:'gpt-6.1-sol',responseCipher:cipher,credential:await protectAIKey(secret,'synthetic-key','owner','openai')}}:name==='finance_ai_settle'?(settled++,{}):{},from:()=>({update:value=>{updates.push(value);if(value.response_cipher)cipher=value.response_cipher;return {eq:()=>({eq:async()=>({})})};}})};
+globalThis.fetch=async(url,options)=>{calls++;const b=JSON.parse(options.body);assert.equal(b.reasoning.effort,'low');assert.equal(b.max_output_tokens,6000);if(mode==='timeout'){const e=new Error('fixture');e.name='TimeoutError';throw e;}return Response.json({status:'completed',usage:{input_tokens:10,output_tokens:20},output:[{content:[{type:'output_text',text:'{"summary":"Saved","items":[]}'}]}]});};
+mode='invalid';await assert.rejects(assistantInference(admin,args),/Assistant evidence/);assert(cipher&&!cipher.includes('Saved'));assert(updates.some(x=>x.failure_message==='Assistant evidence was incomplete.'));
+status='failed';mode='valid';const before=calls;assert.equal((await assistantInference(admin,args)).summary,'Saved');assert.equal(calls,before,'Saved response recovery must not call a provider');
+status='new';cipher=null;mode='timeout';await assert.rejects(assistantInference(admin,args),/timed out/);assert.equal(calls,before+1,'Timeout must never retry itself');assert(updates.some(x=>x.failure_message?.includes('timed out')));
+console.log('PASS valid-item preservation, anchored review-only fallback, duplicate action protection, encrypted checkpoints, zero-charge response recovery, low reasoning, explicit timeout diagnostics and no automatic retry.');

@@ -3,7 +3,7 @@ import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
 import {workerIdentity} from '../_shared/worker-context.ts';
 import {assistantContext} from '../_shared/assistant-context.ts';
 import {assistantInference,digest,stageId} from '../_shared/assistant-provider.ts';
-import {assistantSchemaFor,assistantInstructions,validateAssistant} from '../_shared/assistant-contract.ts';
+import {assistantSchemaFor,assistantInstructions,validateAssistantBatch} from '../_shared/assistant-contract.ts';
 import {taskDefinition} from '../_shared/assistant-tasks.ts';
 import {protectAIKey} from '../_shared/ai-vault.ts';
 const env=(k:string)=>Deno.env.get(k)||'';
@@ -58,7 +58,7 @@ serve(async req=>{
     else{citations=context.researchDecision.citations;context.sources.push({name:'Public merchant research',text:'PUBLIC RESEARCH (not private purchase evidence): '+context.researchDecision.text});}
    }
    policy=await authorize();if(policy.revision!==job.policy_revision)throw Error('Your AI settings changed. No further analysis was started.');
-   const result=await assistantInference(admin,{owner,requestId:job.id,provider:context.provider,model:context.model,beforeSend:async()=>{await checkLearning();const p=await authorize();if(p.revision!==job.policy_revision)throw Error('Your AI settings changed.');},input:JSON.stringify(context.sources.map((s:any,i:number)=>({source:i,name:s.name,text:s.text}))),instructions:assistantInstructions(job.module,job.task),schema:assistantSchemaFor(job.module,job.task),validate:raw=>validateAssistant(raw,context.sources,job.module,job.task,context.transactions,context.learningPolicies||[])});
+   const result=await assistantInference(admin,{owner,requestId:job.id,provider:context.provider,model:context.model,beforeSend:async()=>{await checkLearning();const p=await authorize();if(p.revision!==job.policy_revision)throw Error('Your AI settings changed.');},input:JSON.stringify(context.sources.map((s:any,i:number)=>({source:i,name:s.name,text:s.text}))),instructions:assistantInstructions(job.module,job.task),schema:assistantSchemaFor(job.module,job.task),validate:raw=>validateAssistantBatch(raw,context.sources,job.module,job.task,context.transactions,context.learningPolicies||[])});
    const items=await Promise.all(result.items.map(async(x:any)=>({kind:x.kind,fingerprint:await digest({module:job.module,task:job.task,kind:x.kind,transaction:x.transaction_id||null,target:x.transaction_id?context.snapshot.transactions[x.transaction_id]:x.title,proposal:x}),payload:{...x,evidence:x.evidence.map((e:any)=>({...e,name:context.sources[e.source].name})),citations,scope:context.window}})));
    const save=await admin.rpc('finance_assistant_store',{_job:job.id,_items:items,_summary:result.summary});if(save.error)throw Error('Analysis finished but work could not be saved. Resume this run; do not start another paid request.');job.summary=result.summary;
   }

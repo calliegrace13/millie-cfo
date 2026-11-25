@@ -109,3 +109,26 @@ not retry a paid failure, reset a failure stop, enable hidden tasks, alter evide
 permissions, increase dollar limits, or re-run completed financial checks. Both
 shared dollar ceilings and any optional request caps remain enforced by the final
 reservation. Choosing a provider manually turns automatic selection off.
+
+
+### Failure recovery
+
+Provider requests can run for up to 120 seconds, within the worker's outer
+request window. GPT-6.1 Sol uses low reasoning effort while retaining the same
+6,000-token maximum output reservation. A returned response is checkpointed with
+owner-bound encryption before validation. A failed checkpointed response can be
+revalidated under the current evidence contract using its original request ID,
+without another provider call. Original policy and learning revisions still apply.
+
+Each financial suggestion must pass the existing strict checks. Batch processing
+preserves valid suggestions; invalid actions are withheld and become anchored
+review questions where evidence permits. Duplicate financial actions are excluded.
+Malformed whole responses still fail and stay recoverable for diagnosis.
+
+An explicit retry-queue action authorizes one attempt per selected failed task.
+It recovers saved responses first, preserves the prior attempt ID, and otherwise
+uses a fresh ID on the selected provider. Repeated clicks do not duplicate the
+queue. Each call still checks shared dollar budgets, credit protection, task
+permissions and provider pricing. Prior uncertain charges remain held. Timeouts,
+provider rejection and validation failures are recorded as readable private
+failure messages; raw provider responses and keys never enter browser status.

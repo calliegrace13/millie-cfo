@@ -49,3 +49,30 @@ export function validateAssistant(raw:any,sources:{name:string;text:string}[],mo
   return t?enforcePolicy(x,t,policies,module):x;
  });return {summary:raw.summary,items};
 }
+
+// Validate proposals independently: one unverifiable suggestion must not throw
+// away the rest of a paid batch. Rejected actions NEVER become financial writes.
+export function validateAssistantBatch(raw:any,sources:{name:string;text:string}[],module:string,task:string,transactions:any[],policies:LearningPolicy[]=[]){
+ if(typeof raw?.summary!=='string'||raw.summary.length>1800||!Array.isArray(raw.items)||raw.items.length>20)throw Error('Assistant response was incomplete.');
+ const items:any[]=[],actions=new Set<string>(),reviews=new Set<string>();let rejected=0;
+ for(const candidate of raw.items){
+  try{
+   const checked=validateAssistant({summary:raw.summary,items:[candidate]},sources,module,task,transactions,policies).items[0];
+   if(['category','plan'].includes(checked.kind)){
+    if(actions.has(checked.transaction_id)){rejected++;continue;}
+    actions.add(checked.transaction_id);
+   }
+   items.push(checked);
+  }catch{
+   rejected++;
+   const t=transactions.find(t=>t.id===candidate?.transaction_id&&t.eligible);
+   const source=t?sources.findIndex(s=>s.text.includes(t.id)):0;
+   const id=t?.id||'';
+   if(source<0||!sources[source]?.text?.trim()||reviews.has(id)||actions.has(id))continue;
+   reviews.add(id);
+   const question={kind:'question',title:t?'Review this purchase’s treatment':'Review an unverified AI suggestion',explanation:'An AI suggestion could not pass Millie’s evidence checks. It was not applied. Other verified suggestions from this batch are retained.',question:t?'Please confirm what this purchase was for and its appropriate category or benefit dates.':'Please review the task evidence and confirm any missing facts. Millie could not verify one of its suggestions.',transaction_id:id,category:'',name:'',start_date:'',end_date:'',amount:0,residual:0,plan_kind:'',currency:'',account_id:'',evidence:[{source,quote:sources[source].text.trim().slice(0,400)}]};
+   items.push(validateAssistant({summary:raw.summary,items:[question]},sources,module,task,transactions,policies).items[0]);
+  }
+ }
+ return {summary:(raw.summary+(rejected?' '+rejected+' unverified suggestion(s) were withheld; available review questions are saved.':'')).slice(0,1800),items};
+}

@@ -12,10 +12,11 @@ export function AutopilotProvider({children}:{children:ReactNode}){
  const configure=async(enabled:boolean)=>{if(query.isPending||query.error)throw Error('Refresh automatic work settings first.');setError('');const r=await financeDb.rpc('finance_background_autopilot',{_enabled:enabled,_expected:query.data?.settings?.revision||0});if(r.error)throw Error(r.error.message);await qc.invalidateQueries({queryKey:['ai-policies',user?.id]});await query.refetch();};
  const startWorkflow=async()=>{if(query.isPending||query.error)throw Error('Refresh your workflow settings first.');setError('');const r=await financeDb.rpc('finance_start_ai_workflow',{_expected:query.data?.settings?.revision||0});if(r.error)throw Error(r.error.message);await qc.invalidateQueries({queryKey:['ai-policies',user?.id]});await query.refetch();};
  const manage=async(action:'retry'|'skip',id:string)=>{setError('');await request({action,id});await query.refetch();};
+ const retryFailed=async(ids:string[])=>{setError('');const r=await request({action:'retry-many',ids});await query.refetch();return r.queued as number;};
  const refresh=async()=>{try{if(query.data?.settings?.status==='error'&&!query.data.work.some(w=>w.status==='failed'))await request({action:'recheck'});setError('');}catch(e){setError((e as Error).message);}return query.refetch();};
- return <Context.Provider value={{...query,configure,startWorkflow,manage,busy:query.data?.settings?.status==='working',refetch:refresh,error:error||query.error}}>{children}</Context.Provider>;
+ return <Context.Provider value={{...query,configure,startWorkflow,manage,retryFailed,busy:query.data?.settings?.status==='working',refetch:refresh,error:error||query.error}}>{children}</Context.Provider>;
 }
-export function useAutopilot():{data?:{settings:AutoSettings|null;work:any[]};isPending:boolean;error:string|Error|null;busy:boolean;configure:(enabled:boolean)=>Promise<void>;startWorkflow:()=>Promise<void>;manage:(action:'retry'|'skip',id:string)=>Promise<void>;refetch:()=>Promise<unknown>}{const c=useContext(Context);if(!c)throw Error('AutopilotProvider required');return c;}
+export function useAutopilot():{data?:{settings:AutoSettings|null;work:any[]};isPending:boolean;error:string|Error|null;busy:boolean;configure:(enabled:boolean)=>Promise<void>;startWorkflow:()=>Promise<void>;manage:(action:'retry'|'skip',id:string)=>Promise<void>;retryFailed:(ids:string[])=>Promise<number>;refetch:()=>Promise<unknown>}{const c=useContext(Context);if(!c)throw Error('AutopilotProvider required');return c;}
 
 export function allowanceMessage(nextRunAt:string) {
  const time=new Date(nextRunAt);
