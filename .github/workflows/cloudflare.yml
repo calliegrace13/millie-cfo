@@ -64,6 +64,9 @@ jobs:
       - run: npm run test:answer-memory
         env:
           PG_TEST_URL: postgresql://postgres@127.0.0.1:55439/millie_bank_test
+      - run: npm run test:automatic-answer-memory
+        env:
+          PG_TEST_URL: postgresql://postgres@127.0.0.1:55439/millie_bank_test
       - run: npm run build
       - run: npm run check:hosting
       - name: Publish tested static assets

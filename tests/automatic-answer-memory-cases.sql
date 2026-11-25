@@ -1,0 +1,23 @@
+revoke all on function finance_policy_merchant(text) from public,anon,authenticated,service_role;
+grant select on finance_assistant_items,transactions,accounts to authenticated;
+do $$declare u uuid:=gen_random_uuid();other_owner uuid:=gen_random_uuid();a uuid:=gen_random_uuid();tx uuid:=gen_random_uuid();q uuid:=gen_random_uuid();rev integer;blocked boolean;begin
+ insert into auth.users values(u),(other_owner);insert into accounts(id,user_id,name,currency) values(a,u,'Fixture','USD');
+ insert into transactions(id,user_id,account_id,name,merchant_name,date,amount) values(tx,u,a,'Salon','Salon','2026-11-20',100);
+ insert into finance_assistant_items(id,owner_id,module,task,kind,payload,status) values(q,u,'transactions','categories','question',jsonb_build_object('transaction_id',tx,'question','What was this for?'),'needs_input');
+ perform set_config('request.jwt.claim.sub',u::text,true);
+ perform finance_assistant_update(q,1,'answer','{"answer":"Haircut"}');
+ if not exists(select 1 from finance_answer_memory_evidence where id=q and answer='Haircut' and merchant_key='salon' and account_id=a and currency='USD' and amount=100) then raise exception 'An ordinary answer was not remembered automatically';end if;
+ execute 'set local role authenticated';if (select count(*) from finance_answer_memory_evidence)<>1 then raise exception 'Authenticated owner could not read memory evidence';end if;execute 'reset role';
+ perform finance_set_automatic_answer_memory(true);if not exists(select 1 from finance_answer_memory_settings where owner_id=u and enabled) then raise exception 'Automatic memory not enabled';end if;
+ perform finance_assistant_update(q,2,'done','{}');if not exists(select 1 from finance_answer_memory_evidence where id=q and answer='Haircut') then raise exception 'Completing work lost its answer memory';end if;
+ update finance_assistant_items set status='needs_input' where id=q;
+ perform finance_assistant_update(q,3,'answer','{"answer":"Haircut and routine styling"}');select revision into rev from finance_answer_memories where id=q;
+ if rev<>2 or exists(select 1 from finance_answer_memory_evidence where id=q and answer='Haircut') then raise exception 'Revised answer did not replace old memory context';end if;
+ perform finance_set_answer_memory(q,rev,false);perform finance_assistant_update(q,4,'answer','{"answer":"Corrected purpose"}');
+ if exists(select 1 from finance_answer_memories where id=q and enabled) then raise exception 'Revising an answer silently resumed paused memory';end if;
+ perform finance_set_automatic_answer_memory(false);if exists(select 1 from finance_answer_memory_settings where owner_id=u and enabled) then raise exception 'Global pause failed';end if;
+ perform set_config('request.jwt.claim.sub',other_owner::text,true);blocked:=false;begin perform finance_set_answer_memory(q,4,true);exception when raise_exception then blocked:=true;end;if not blocked then raise exception 'Foreign owner changed memory';end if;
+ if has_table_privilege('authenticated','finance_answer_memories','UPDATE') or has_function_privilege('anon','finance_set_automatic_answer_memory(boolean)','EXECUTE') then raise exception 'Unsafe memory permissions';end if;
+ if (select amount from transactions where id=tx)<>100 then raise exception 'Remembering changed a bank amount';end if;
+end;$$;
+rollback;

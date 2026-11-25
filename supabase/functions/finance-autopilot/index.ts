@@ -88,7 +88,9 @@ serve(async req=>{
   const setupMissing={everyday:!budgets.length,runway:!cashSettings.length,goals:!documents.some((d:any)=>['goal','project'].includes(d.kind)),household:!sharing.length,income:!moduleRecords.some((r:any)=>r.domain==='income'),debt:!moduleRecords.some((r:any)=>r.domain==='debt'),investments:!moduleRecords.some((r:any)=>r.domain==='investments'),longterm:!moduleRecords.some((r:any)=>r.domain==='long_term')};
   const unified=settings.workflow_scope==='all_enabled';
   const answerGroups=await rows('finance_question_answer_groups');
-  const plan=workflowPlan({workflowScope:settings.workflow_scope,owner,accounts,transactions,documents,plans,sharing,continuity,offsets,policies,modules,work,items,answerGroups,emails,connection:mail,setupMissing,learningPolicies,budgets,cashSettings,moduleRecords,contextRecords,trips,tripLinks,calendarEvents,reconciliationEnabled:reconcileSetting?.enabled===true,now:Date.now()});
+  const answerMemorySetting=await admin.from('finance_answer_memory_settings').select('enabled').eq('owner_id',owner).maybeSingle();if(answerMemorySetting.error)throw Error('Your answer memory settings could not load.');
+  const answerMemories=answerMemorySetting.data?.enabled?await rows('finance_answer_memory_evidence'):[];
+  const plan=workflowPlan({workflowScope:settings.workflow_scope,owner,accounts,transactions,documents,plans,sharing,continuity,offsets,policies,modules,work,items,answerGroups,answerMemories,automaticAnswerMemory:answerMemorySetting.data?.enabled===true,emails,connection:mail,setupMissing,learningPolicies,budgets,cashSettings,moduleRecords,contextRecords,trips,tripLinks,calendarEvents,reconciliationEnabled:reconcileSetting?.enabled===true,now:Date.now()});
   const canReceipt=policies.some((p:any)=>p.module==='transactions'&&p.mode==='ai'&&p.tasks.includes('receipts'));
   const autoReceipt=canReceipt&&policies.some((p:any)=>p.module==='transactions'&&p.auto_tasks.includes('receipts'));
   // Reconcile saved receipt evidence against new bank imports without another AI call.

@@ -5,6 +5,7 @@ import {useAuth} from '@/hooks/useAuth';
 import {useHousehold} from '@/hooks/useHousehold';
 import {useAssistantInbox} from '@/hooks/useAutomation';
 import {useLearningPolicies} from '@/hooks/useLearningPolicies';
+import {AutomaticAnswerMemory} from '@/components/finance/AutomaticAnswerMemory';
 import {answerMemoryDraft} from '@/lib/answer-memory';
 import {POLICY_EFFECTS,matchingPolicies,policyDecision} from '../../supabase/functions/_shared/learning-policy';
 import {receiptCategories} from '../../supabase/functions/_shared/receipt-contract';
@@ -37,6 +38,7 @@ export default function LearningPolicies(){
  return <AppLayout><PageHeader title="How Millie learns" description="Teach a decision once. Keep control of where it applies." actions={<Button disabled={busy} onClick={()=>{setDraft(blank());setMessage('');}}><Plus className="h-4 w-4 mr-2"/>New policy</Button>}/>
  <div className="max-w-5xl space-y-6">
   <nav aria-label="Learning and exceptions" className="flex gap-2"><Button asChild variant="outline"><Link to="/assistant">Questions & decisions</Link></Button><Button variant="secondary" aria-current="page">Your policies</Button></nav>
+  <AutomaticAnswerMemory/>
   <section className="rounded-2xl border bg-primary/5 p-5 flex gap-3"><BookOpen className="h-5 w-5 shrink-0 text-primary"/><div className="space-y-2"><h2 className="font-semibold">Policies guide judgment. Evidence supplies the facts.</h2><p className="text-sm text-muted-foreground">Tell Millie when to spread an expense, when to ask you, or what matters in a financial review. It still needs purchase details such as coverage dates. Each module’s AI permissions and spending limits continue to apply.</p><div className="flex flex-wrap gap-4 text-sm"><Link className="text-primary underline" to="/transaction-rules">Merchant category rules</Link><Link className="text-primary underline" to="/customize#mode-assets">AI permissions</Link><Link className="text-primary underline" to="/context">Purchase facts & documents</Link></div></div></section>
   {message&&<p role="status" className="text-sm">{message}</p>}{(error||q.error)&&<p role="alert" className="text-sm text-destructive">{error||q.error?.message}</p>}
   {draft&&<section aria-label="Policy editor" className="rounded-2xl border border-primary/40 bg-card p-5 space-y-5">

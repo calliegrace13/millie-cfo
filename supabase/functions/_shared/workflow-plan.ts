@@ -1,6 +1,7 @@
 import {autopilotPlan} from './autopilot-plan.ts';
 import {ASSISTANT_TASKS} from './assistant-tasks.ts';
 import {quarterBounds} from './review-periods.ts';
+import {matchingAnswerMemories} from './answer-context.ts';
 
 // Legacy opt-ins retain their original task scope. The expanded workflow is an
 // explicit new opt-in and never retries a failed request behind the user's back.
@@ -42,13 +43,14 @@ export function workflowPlan(x:any){
    const links=(x.tripLinks||[]).filter((l:any)=>l.transaction_id===id&&!l.excluded&&l.trip_id&&(l.source==='receipt'||l.manual===true));
    const words=String(t.merchant_name||t.name||'').toLowerCase().match(/[a-z]{4,}/g)||[];
    const calendar=(x.calendarEvents||[]).filter((e:any)=>e.payload.starts_on<=t.date&&e.payload.ends_on>=t.date&&words.some((word:string)=>!['payment','purchase','online','hotel','flight','reservation'].includes(word)&&String(e.payload.title+' '+e.payload.location).toLowerCase().includes(word)));
-   if(!records.length&&!links.length&&!calendar.length)continue;seen.add(key);
+   const memories=x.automaticAnswerMemory?matchingAnswerMemories(x.answerMemories||[],{...t,currency:x.accounts.find((a:any)=>a.id===t.account_id)?.currency||'USD'},x.owner,q.module):[];
+   if(!records.length&&!links.length&&!calendar.length&&!memories.length)continue;seen.add(key);
    const scope=quarterBounds(t.date);
    const stable=(rows:any[])=>rows.sort((a,b)=>String(a[0]).localeCompare(String(b[0])));
-   const evidence={calendar:stable(calendar.map((e:any)=>[e.event_id,e.updated_at])),records:stable(records.map((r:any)=>[r.id,r.revision])),trips:stable(links.map((l:any)=>[l.trip_id,l.revision,(x.trips||[]).find((t:any)=>t.id===l.trip_id)?.revision]))};
+   const evidence={calendar:stable(calendar.map((e:any)=>[e.event_id,e.updated_at])),records:stable(records.map((r:any)=>[r.id,r.revision])),trips:stable(links.map((l:any)=>[l.trip_id,l.revision,(x.trips||[]).find((t:any)=>t.id===l.trip_id)?.revision])),memories:stable(memories.map((m:any)=>[m.id,m.revision]))};
    // A replacement question is not new evidence. Reuse this guard across model
    // changes and older checkpoints so unanswered questions cannot spend in a loop.
-   const sameEvidence=(s:any)=>!!s&&JSON.stringify({calendar:stable([...(s.calendar||[])]),records:stable([...(s.records||[])]),trips:stable([...(s.trips||[])])})===JSON.stringify(evidence);
+   const sameEvidence=(s:any)=>!!s&&JSON.stringify({calendar:stable([...(s.calendar||[])]),records:stable([...(s.records||[])]),trips:stable([...(s.trips||[])]),memories:stable([...(s.memories||[])])})===JSON.stringify(evidence);
    if(x.work.some((w:any)=>w.kind==='resolve'&&(w.status==='done'||w.status==='skipped'&&w.result?.manualSkip)&&w.payload?.module===q.module&&w.payload?.task===q.task&&w.payload?.transactionIds?.includes(id)&&sameEvidence(w.payload.signature)))continue;
    core.options.push({kind:'resolve',module:q.module,task:q.task,transactionIds:[id],questionIds:[q.id],start:scope.start,end:scope.end,signature:evidence} as any);
   }
