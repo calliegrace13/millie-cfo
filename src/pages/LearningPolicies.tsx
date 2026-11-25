@@ -5,6 +5,7 @@ import {useAuth} from '@/hooks/useAuth';
 import {useHousehold} from '@/hooks/useHousehold';
 import {useAssistantInbox} from '@/hooks/useAutomation';
 import {useLearningPolicies} from '@/hooks/useLearningPolicies';
+import {answerMemoryDraft} from '@/lib/answer-memory';
 import {POLICY_EFFECTS,matchingPolicies,policyDecision} from '../../supabase/functions/_shared/learning-policy';
 import {receiptCategories} from '../../supabase/functions/_shared/receipt-contract';
 import {receiptEligible} from '../../supabase/functions/_shared/receipt-eligibility';
@@ -28,7 +29,7 @@ export default function LearningPolicies(){
  const q=useLearningPolicies(),inbox=useAssistantInbox(),h=useHousehold(),{user}=useAuth(),[params,setParams]=useSearchParams();
  const [draft,setDraft]=useState<any>(null),[error,setError]=useState(''),[message,setMessage]=useState(''),[busy,setBusy]=useState(false),[showPaused,setShowPaused]=useState(false);
  const policies=q.data?.policies||[],accounts=h.data.accounts.filter(a=>a.user_id===user?.id),source=inbox.data?.find(i=>i.id===params.get('from'));
- useEffect(()=>{if(source?.answer&&!draft){setDraft({...blank(),title:source.payload.title.slice(0,120),guidance:'',source_item_id:source.id});}},[source?.id]);
+ useEffect(()=>{if(source?.answer&&!draft&&!h.loading&&!h.error){setDraft({...blank(),...answerMemoryDraft([source],h.rawData.transactions,h.rawData.accounts,user?.id||''),source_item_id:source.id});}},[source?.id,h.loading,h.error]);
  const set=(key:string,value:any)=>setDraft((d:any)=>({...d,[key]:value}));
  const preview=draft?h.data.transactions.filter(t=>t.user_id===user?.id&&!closedForReview(t,h.data.documents||[],user?.id||'')&&receiptEligible(t,accounts.find(a=>a.id===t.account_id))).map(t=>({...t,currency:accounts.find(a=>a.id===t.account_id)?.currency||'USD'})).filter(t=>matchingPolicies([{...draft,enabled:true,max_amount:draft.max_amount===''?null:draft.max_amount}],t,draft.module==='all'?'assets':draft.module).length):[];
  const conflicts=preview.filter(t=>policyDecision([...policies.filter(p=>p.id!==draft.id),{...draft,id:draft.id||'draft',enabled:true,max_amount:draft.max_amount===''?null:draft.max_amount}],t,draft.module==='all'?'assets':draft.module).conflict).length;

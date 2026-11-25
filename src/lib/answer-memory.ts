@@ -1,0 +1,7 @@
+export const memoryToday=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
+export function answerMemoryDraft(items:any[],purchases:any[],accounts:any[],owner:string){
+ const selected=new Set(items.map(i=>i.payload?.transaction_id));const owned=purchases.filter(t=>t.user_id===owner&&selected.has(t.id));
+ const merchants=[...new Set(owned.map(t=>String(t.merchant_name||t.name||'').trim()).filter(Boolean))],accountIds=[...new Set(owned.map(t=>t.account_id))],currencies=[...new Set(accounts.filter(a=>a.user_id===owner&&accountIds.includes(a.id)).map(a=>a.currency||'USD'))];
+ return {title:('Remember: '+(merchants.length===1?merchants[0]:items[0]?.payload?.title||'My preference')).slice(0,120),guidance:'',effect:'guidance',module:merchants.length===1?'all':items.every(i=>i.module===items[0]?.module)?items[0]?.module||'all':'all',merchant:merchants.length===1?merchants[0].slice(0,100):'',category:'',account_id:accountIds.length===1?accountIds[0]:'',currency:currencies.length===1?currencies[0]:'USD',min_amount:0,max_amount:null,starts_on:memoryToday(),ends_on:'',enabled:true};
+}
+export function validAnswerMemory(m:any){return !!m&&!!m.title?.trim()&&!!m.guidance?.trim()&&m.guidance.length<=2000&&/^\d{4}-\d{2}-\d{2}$/.test(m.starts_on)&&(!m.ends_on||m.ends_on>=m.starts_on)&&Number.isFinite(Number(m.min_amount))&&Number(m.min_amount)>=0&&(m.max_amount===null||m.max_amount===''||Number.isFinite(Number(m.max_amount))&&Number(m.max_amount)>=Number(m.min_amount));}

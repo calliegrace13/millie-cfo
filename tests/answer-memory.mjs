@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';import fs from 'node:fs';import ts from '../node_modules/typescript/lib/typescript.js';
+const output=ts.transpileModule(fs.readFileSync('src/lib/answer-memory.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.ES2022,target:ts.ScriptTarget.ES2022}}).outputText;
+const {answerMemoryDraft,validAnswerMemory,memoryToday}=await import('data:text/javascript;base64,'+Buffer.from(output).toString('base64'));
+const items=[{id:'q',module:'transactions',answer:'The flight was December 22–28.',payload:{title:'Flight dates',transaction_id:'t'}}],transactions=[{id:'t',user_id:'me',merchant_name:'Airline',account_id:'a'}],accounts=[{id:'a',user_id:'me',currency:'USD'},{id:'foreign',user_id:'other',currency:'EUR'}];
+const before=JSON.stringify({items,transactions,accounts});let draft=answerMemoryDraft(items,transactions,accounts,'me');
+assert.equal(draft.guidance,'','Purchase-specific answers never silently become future facts');assert.equal(draft.account_id,'a');assert.equal(draft.merchant,'Airline');assert.equal(draft.starts_on,memoryToday());assert.equal(draft.module,'all');assert.equal(draft.effect,'guidance');assert(!validAnswerMemory(draft));assert.equal(JSON.stringify({items,transactions,accounts}),before);
+draft={...draft,guidance:'Routine haircut appointments are personal care; ask about unusual services.'};assert(validAnswerMemory(draft));assert(!validAnswerMemory({...draft,max_amount:-1}));assert(!validAnswerMemory({...draft,ends_on:'2020-01-01'}));assert(!validAnswerMemory({...draft,guidance:' '}));
+draft=answerMemoryDraft([{...items[0],module:'everyday',payload:{title:'Monthly budget'}}],transactions,accounts,'me');assert.equal(draft.module,'everyday');assert.equal(draft.merchant,'');assert.equal(draft.account_id,'');
+draft=answerMemoryDraft(items,[{...transactions[0],user_id:'other'}],accounts,'me');assert.equal(draft.merchant,'','Partner purchase details cannot prefill remembered preferences');
+console.log('PASS explicit reusable guidance, safe merchant/account/currency/date defaults, owner isolation, no purchase-fact copying, future scope validation and unchanged source answers. No paid calls.');
