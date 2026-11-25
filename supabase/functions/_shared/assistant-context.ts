@@ -1,4 +1,5 @@
 import {closedForReview} from './review-periods.ts';
+import {tripCalendarSources} from './trip-calendar-sources.ts';
 import {connectedContextSources} from './connected-context.ts';
 // This service sees only owned data. Shared household data is not consent to send
 // a partner's records to another person's AI provider.
@@ -43,6 +44,7 @@ export async function assistantContext(client:any,owner:string,module:string,sta
  // Bind it to its purchase; never borrow coverage facts from another purchase.
  for(const a of answers.filter((a:any)=>a.answer?.trim()&&a.status!=='dismissed'&&tx.some((t:any)=>t.id===a.payload?.transaction_id)))sources.push({name:'Your answers',text:JSON.stringify({transaction_id:a.payload.transaction_id,question:a.payload.question,answer:a.answer,answer_revision:a.revision})});
  sources.push(...await connectedContextSources(client,owner,tx.map((t:any)=>t.id),includeReceipts));
+ sources.push(...await tripCalendarSources(client,owner,tx.map((t:any)=>t.id),start,end));
  const snapshot={learning_revision:learningState,answer_values:Object.fromEntries(answers.map((a:any)=>[a.id,a.answer])),transactions:Object.fromEntries(selected.map((t:any)=>[t.id,{id:t.id,updated_at:t.updated_at,amount:t.amount,date:t.date,account_id:t.account_id,category:t.category??null}])),budgets};
  return {sources,learningPolicies,transactions:tx.filter((t:any)=>t.eligible).slice(0,40),snapshot,merchants:[...new Set(tx.filter((t:any)=>t.eligible).map((t:any)=>String(t.merchant).replace(/\d+/g,'').replace(/[^\p{L} .&'-]/gu,'').trim()).filter((n:string)=>n.length>=3&&n.length<=60))].slice(0,3)};
 }

@@ -2,7 +2,7 @@ import {policyDecision} from './learning-policy.ts';
 import {closedForReview,quarterBounds} from './review-periods.ts';
 import {receiptEligible} from './receipt-eligibility.ts';
 export const timingCandidate=(t:any)=>/insurance|annual|tuition|deposit|furniture|computer|laptop|appliance|mattress|airline|flight|hotel|subscription/i.test((t.merchant_name||'')+' '+t.name);
-export type AutoStep={kind:string;module:string;task:string;transactionIds?:string[];receiptIds?:string[];start?:string;end?:string;answerId?:string;answerRevision?:number;note?:string;signature:unknown;policySignatures?:Record<string,unknown>};
+export type AutoStep={kind:string;module:string;task:string;transactionIds?:string[];receiptIds?:string[];start?:string;end?:string;questionIds?:string[];answerId?:string;answerRevision?:number;note?:string;signature:unknown;policySignatures?:Record<string,unknown>};
 export function autopilotPlan(x:any){
  const {owner,accounts,transactions,documents,plans,sharing,continuity,offsets,policies,modules,work,items,emails,connection,now}=x;
  const enabled=(module:string,task:string)=>{const p=policies.find((p:any)=>p.module===module);return (module==='transactions'||modules.includes(module))&&p?.mode==='ai'&&p.tasks.includes(task);};

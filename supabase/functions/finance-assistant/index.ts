@@ -32,6 +32,14 @@ serve(async req=>{
    if(!validDate(b.start)||!validDate(b.end)||b.end<b.start||Date.parse(b.end)-Date.parse(b.start)>366*86400000||typeof b.note!=='string'||b.note.length>4000)throw Error('Choose a date window of up to one year and a note under 4,000 characters.');
    context=await assistantContext(client,owner,b.module,b.start,b.end,b.transactionIds,policy.use_receipts===true);context.provider=b.provider;context.model=b.model;context.receipts=policy.use_receipts;context.web=policy.use_web;context.window={start:b.start,end:b.end};
    if(b.note.trim())context.sources.push({name:'Your answers',text:b.note.trim()});
+   if(b.questionIds!==undefined){
+    if(!Array.isArray(b.questionIds)||!b.questionIds.length||b.questionIds.length>20||b.questionIds.some((id:any)=>!uuid(id)))throw Error('Choose valid saved questions.');
+    const qs=await admin.from('finance_assistant_items').select('id,module,task,payload,answer,status').eq('owner_id',owner).in('id',b.questionIds);
+    if(qs.error||qs.data.length!==new Set(b.questionIds).size||qs.data.some((q:any)=>q.module!==b.module||q.task!==b.task||q.answer||q.status!=='needs_input'||!b.transactionIds?.includes(q.payload?.transaction_id)))throw Error('Your saved questions changed. Refresh before reviewing.');
+    context.questionIds=b.questionIds;
+    context.sources.push({name:'Open questions to reassess using current evidence',text:JSON.stringify(qs.data.map((q:any)=>({id:q.id,transaction_id:q.payload.transaction_id,question:q.payload.question,meaning:'Earlier AI uncertainty, not an owner-provided answer. Resolve only from current evidence; otherwise retain a targeted question.'})))});
+   }
+
    if(policy.use_receipts){
     const r=await admin.from('finance_email_receipts').select('message_id,subject,body_cipher').eq('owner_id',owner).eq('dismissed',false).gt('expires_at',new Date().toISOString()).gte('sent_at',b.start+'T00:00:00Z').lte('sent_at',b.end+'T23:59:59Z').order('sent_at',{ascending:false}).limit(10);
     if(r.error)throw Error('Could not load receipt evidence. No analysis was started.');let chars=0;
@@ -68,6 +76,7 @@ serve(async req=>{
    policy=await authorize();if(!policy.auto_tasks.includes(job.task)||policy.revision!==job.policy_revision)break;
    const r=await client.rpc('finance_assistant_apply',{_id:item.id,_expected:item.revision,_automatic:true});if(r.error)attention.push('A proposed change needs your review because its data, period or permissions changed.');else applied++;
   }
+  if(context.questionIds?.length){const r=await admin.rpc('finance_resolve_rechecked_questions',{_owner:owner,_job:job.id,_ids:context.questionIds});if(r.error)throw Error('Could not update the rechecked questions. Saved results remain available.');}
   return reply({status:'succeeded',summary:job.summary,applied,attention:[...new Set(attention)]});
  }catch(e){const message=e instanceof Error?e.message:'';return reply({error:/^(AI is off|Enable this|Your |This |An analysis|Connect |Request ID|Choose |Could not|Evidence |Assistant |Provider |The provider|Analysis |A proposed)/.test(message)?message:'The task could not finish. Resume the same run to check its status; no automatic paid retry was made.'},400);}
 });

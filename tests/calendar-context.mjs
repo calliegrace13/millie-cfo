@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';import {edgeModule} from './helpers/edge-module.mjs';
+const {calendarEvidence,calendarTrips}=await import(edgeModule('_shared/calendar-context.ts'));
+const event=(id,summary,start,end)=>calendarEvidence({id,summary,status:'confirmed',start:{date:start},end:{date:end}});
+const out=event('out','Flight AA 100 from LGA to DFW','2026-12-01','2026-12-02'),back=event('back','Flight AA 101 from DFW to LGA','2026-12-05','2026-12-06');
+assert.equal(out.ends_on,'2026-12-01','All-day ends are exclusive');
+let trips=calendarTrips([out,back,{...back,event_id:'duplicate'}]);assert.equal(trips.length,1);assert.equal(trips[0].ends_on,'2026-12-05');assert(trips[0].auto_dates);
+assert.equal(calendarTrips([out]).length,0,'One-way flights do not invent return dates');
+assert.equal(calendarTrips([out,back,{...back,event_id:'other',ends_on:'2026-12-08'}]).length,0,'Ambiguous returns need input');
+assert.equal(calendarEvidence({id:'x',summary:'Flight',status:'cancelled'}),null);
+assert.equal(calendarEvidence({id:'x',summary:'Dinner',start:{date:'2026-12-01'},end:{date:'2026-12-02'}}),null);
+assert.equal(calendarEvidence({id:'x',summary:'Flight',attendees:[{self:true,responseStatus:'declined'}]}),null);
+const hotel=event('hotel','Hotel stay','2026-12-03','2026-12-07');assert(calendarTrips([out,back,hotel]).every(t=>!t.auto_dates),'Overlapping distinct itineraries do not auto-date assign');
+assert.equal(calendarEvidence({id:'z',summary:'Flight',start:{dateTime:'2026-12-02T01:00:00Z'},end:{dateTime:'2026-12-02T03:00:00Z'}}).starts_on,'2026-12-01');
+assert(!('description' in event('privacy','Hotel stay','2026-12-01','2026-12-03')));
+console.log('PASS exclusive dates, timezone boundaries, round-trip pairing, duplicate flights, cancelled/declined events, ambiguous returns, overlap gates and minimal calendar evidence.');

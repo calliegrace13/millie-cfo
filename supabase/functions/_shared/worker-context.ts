@@ -1,6 +1,6 @@
 // Internal workers use an expiring owner lease, never a saved browser token.
 // Only the fixed read tables and accounting commands below are available.
-const owned=new Set(['finance_documents','finance_accounting_plans','finance_account_sharing','finance_account_continuity','finance_budget_versions','finance_cash_plans','finance_allocations','finance_module_records','finance_focus_records','finance_context_records','finance_assistant_items','finance_module_preferences','finance_learning_policies','finance_learning_state']);
+const owned=new Set(['finance_context_automation','finance_trips','finance_trip_links','finance_calendar_events','finance_documents','finance_accounting_plans','finance_account_sharing','finance_account_continuity','finance_budget_versions','finance_cash_plans','finance_allocations','finance_module_records','finance_focus_records','finance_context_records','finance_assistant_items','finance_module_preferences','finance_learning_policies','finance_learning_state']);
 const userOwned=new Set(['accounts','transactions','recurring_transactions','credit_cards','credit_card_benefits','benefit_usage']);
 export function workerClient(admin:any,owner:string,lease:string){return {
  from(table:string){

@@ -2,6 +2,7 @@ import {serve} from 'https://deno.land/std@0.168.0/http/server.ts';
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
 import {workerIdentity} from '../_shared/worker-context.ts';
 import {protectAIKey} from '../_shared/ai-vault.ts';
+import {CALENDAR_SCOPE} from '../_shared/calendar-context.ts';
 import {GMAIL_SCOPE,receiptQuery,url64,sha256,authorizationURL,receiptMessage} from '../_shared/email-receipts.ts';
 const env=(name:string)=>Deno.env.get(name)||'';
 const originApp=()=>env('GMAIL_APP_ORIGIN')||'https://millie-cfo-callie.calliegrace13.chatgpt.site';
@@ -46,6 +47,10 @@ serve(async req=>{
    if(!d.refresh_token||!String(d.scope||'').split(' ').includes(GMAIL_SCOPE))throw Error('Gmail read-only access was not granted.');
    const p=await gmail('profile',d.access_token),mailbox=String(p.emailAddress||'').toLowerCase();
    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mailbox))throw Error('Gmail account could not be verified.');
+   if(flow.calendar_only){
+    if(!String(d.scope||'').split(' ').includes(CALENDAR_SCOPE))throw Error('Gmail and Calendar read-only access were not granted.');
+    const saved=await admin.rpc('finance_calendar_connect',{_hash:hash,_owner:owner,_mailbox:mailbox,_credential:await crypt(d.refresh_token,owner,'calendar')});if(saved.error)throw Error('Gmail calendar authorization was cancelled or changed.');return reply({ok:true,calendar:true});
+   }
    const saved=await admin.rpc('finance_email_connect',{_hash:hash,_owner:owner,_mailbox:mailbox,_credential:await crypt(d.refresh_token,owner,'gmail')});
    if(saved.error)throw Error('Gmail connection was cancelled or changed.');return reply({ok:true});
   }
@@ -54,8 +59,8 @@ serve(async req=>{
    if(b.consent!==true)throw Error('Confirm read-only Gmail access before connecting.');
    const state=url64(crypto.getRandomValues(new Uint8Array(32))),verifier=url64(crypto.getRandomValues(new Uint8Array(32))),hash=await sha256(state);
    await admin.from('finance_email_oauth_states').delete().eq('owner_id',owner).lt('expires_at',new Date().toISOString());
-   const r=await admin.from('finance_email_oauth_states').insert({state_hash:hash,owner_id:owner,verifier:await crypt(verifier,owner,'state:'+hash)});
-   if(r.error)throw Error('Email authorization could not start.');return reply({url:authorizationURL(env('GOOGLE_GMAIL_CLIENT_ID'),callback(),state,await sha256(verifier))});
+   const r=await admin.from('finance_email_oauth_states').insert({state_hash:hash,owner_id:owner,verifier:await crypt(verifier,owner,'state:'+hash),calendar_only:b.calendar===true});
+   if(r.error)throw Error('Email authorization could not start.');const url=new URL(authorizationURL(env('GOOGLE_GMAIL_CLIENT_ID'),callback(),state,await sha256(verifier)));if(b.calendar===true){url.searchParams.set('scope',GMAIL_SCOPE+' '+CALENDAR_SCOPE);url.searchParams.set('include_granted_scopes','true');}return reply({url:url.toString()});
   }
   if(b.action==='load'){
    if(!Array.isArray(b.ids)||!b.ids.length||b.ids.length>10||b.ids.some((id:any)=>typeof id!=='string'||!/^[0-9a-f-]{36}$/i.test(id)))throw Error('Select up to ten receipt emails.');

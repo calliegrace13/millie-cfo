@@ -1,0 +1,13 @@
+alter table accounts add column provider_institution_name text,add column mask text;
+alter table transactions add column needs_review boolean default true;
+alter table finance_ai_policies add column auto_tasks text[] default '{}',add column revision integer default 1;
+create table finance_email_oauth_states(state_hash text,owner_id uuid,calendar_only_placeholder boolean,claimed boolean,expires_at timestamptz);
+create table finance_assistant_jobs(id uuid primary key,owner_id uuid,module text,task text,status text);
+create table finance_assistant_items(id uuid primary key default gen_random_uuid(),owner_id uuid,job_id uuid,module text,task text,fingerprint text,kind text,payload jsonb,status text,answer text default '',result jsonb,revision integer default 1,created_at timestamptz default now(),updated_at timestamptz default now());
+create table finance_assistant_history(owner_id uuid,item_id uuid,revision integer,action text,payload jsonb);
+create function finance_assistant_apply(_id uuid,_expected integer,_automatic boolean) returns jsonb language plpgsql as $$begin raise exception 'Fixture has no auto-save permission';end;$$;
+create function finance_ai_reap() returns void language sql as $$select$$;
+create table finance_autopilot_settings(owner_id uuid,enabled boolean,background_enabled boolean,next_run_at timestamptz,lease_until timestamptz,workflow_scope text,failure_count integer);
+create table finance_autopilot_work(owner_id uuid,status text);
+create schema vault;create table vault.decrypted_secrets(name text,decrypted_secret text);
+create schema net;create function net.http_post(url text,headers jsonb,body jsonb,timeout_milliseconds integer) returns bigint language sql as $$select 1::bigint$$;

@@ -132,3 +132,41 @@ queue. Each call still checks shared dollar budgets, credit protection, task
 permissions and provider pricing. Prior uncertain charges remain held. Timeouts,
 provider rejection and validation failures are recorded as readable private
 failure messages; raw provider responses and keys never enter browser status.
+
+
+### Recurring calendar context and question follow-through
+
+Connections & setup contains read-only Google Calendar connection and recurring
+question cleanup controls. Calendar authorization reuses the authenticated Gmail
+PKCE callback with an owner-bound, single-use Calendar flow flag. It requests
+Calendar events read-only alongside the existing Gmail scope. The Calendar refresh
+credential is encrypted separately and never appears in browser status. Connecting
+Calendar does not replace the Gmail credential or broaden financial write rules.
+
+The existing scheduler checks the primary calendar daily for the past three years
+and next year. Only travel/reservation titles, dates and locations are stored;
+attendee lists and descriptions are excluded. Date-only ends are exclusive, and
+timed events use America/New_York for this setup. Complete snapshots reconcile
+cancelled/removed events; partial snapshots are rejected. Connection changes are
+checked atomically before applying a sync. Disconnect stops reads and removes saved
+calendar event context; existing trip/ledger history remains.
+
+Unambiguous return-flight pairs and explicit multi-day stays create private trip
+overlays. Overlapping inferred trips have automatic date matching disabled. The
+existing trip ledger handles eligible in-window purchases and receipt-evidenced
+advance bookings. Manual trip edits and exclusions prevail. Context never creates
+another expense, moves money, or closes a period.
+
+Opted-in queue cleanup runs during background steps and every six hours independently
+of AI allowance. It archives exact duplicate questions and purchase-category
+questions already resolved in the ledger, with history. Existing category/timing
+proposals apply only through the unchanged automatic-save permission checks; budgets,
+goals, sharing, and missing owner preferences stay for review. The queue loads all
+pages, rather than silently showing only the most recent 200 items.
+
+Questions with linked receipts, trips, or same-merchant calendar evidence get a
+budgeted recheck with a stable evidence signature. Earlier questions are not labeled
+as owner answers. An old question completes only when a finished owned recheck job
+has a replacement item for that purchase; unanswered facts remain visible. There is
+no repeat paid pass without changed question/evidence/policy signatures. Shared
+credit/dollar limits, manual modules and failed-paid-call controls remain in force.

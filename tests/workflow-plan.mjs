@@ -27,3 +27,8 @@ assert.match(aiUsageLabel({used:99,requestLimit:7,requestLimitEnabled:false}),/n
 const status=workflowProgress(['analyst'],base.policies,[{kind:'review',status:'done',payload:{module:'analyst',task:'review'}}],[]);
 assert(status.find(t=>t.module==='analyst').checked);assert(!status.some(t=>t.module==='rewards'));
 console.log('PASS unified task coverage, legacy opt-in isolation, hidden/manual module gates, failed-call isolation, batch fairness, stable evidence, user input immutability and visible progress. No paid calls.');
+
+const evidenceQuestion={id:'question-fixture',revision:1,status:'needs_input',answer:'',module:'transactions',task:'categories',payload:{transaction_id:'t'}};
+const linked={...input,reconciliationEnabled:true,items:[evidenceQuestion],contextRecords:[{id:'evidence',revision:1,transaction_ids:['t']}]};
+const actualId=input.transactions.find(t=>t.user_id===input.owner)?.id;
+if(actualId){linked.items[0].payload.transaction_id=actualId;linked.contextRecords[0].transaction_ids=[actualId];assert(workflowPlan(linked).options.some(o=>o.kind==='resolve'));assert(!workflowPlan({...linked,reconciliationEnabled:false}).options.some(o=>o.kind==='resolve'));assert(!workflowPlan({...linked,contextRecords:[]}).options.some(o=>o.kind==='resolve'));}

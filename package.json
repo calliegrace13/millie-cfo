@@ -14,7 +14,7 @@
     "check:bank-data": "node tests/bank-update.mjs && node tests/bank-integrity.mjs && node tests/financial-context.mjs && node tests/context-receipt-review.mjs && node tests/ai-receipts.mjs && node tests/durable-history.mjs",
     "test:bank-ledger": "node tests/bank-ledger.mjs",
     "test:context-auto-links": "node tests/context-auto-link.mjs",
-    "check:workflow": "node tests/workflow-plan.mjs && node tests/autopilot-plan.mjs && node tests/receipt-queue.mjs && node tests/assistant-modes.mjs && node tests/assistant-provider.mjs && node tests/model-switching.mjs && node tests/model-settings-service.mjs && node tests/assistant-resilience.mjs && node tests/assistant-retry-service.mjs",
+    "check:workflow": "node tests/workflow-plan.mjs && node tests/autopilot-plan.mjs && node tests/receipt-queue.mjs && node tests/assistant-modes.mjs && node tests/assistant-provider.mjs && node tests/model-switching.mjs && node tests/model-settings-service.mjs && node tests/assistant-resilience.mjs && node tests/assistant-retry-service.mjs && node tests/calendar-context.mjs",
     "test:workflow-sql": "node tests/workflow-sql.mjs",
     "test:dollar-limits": "node tests/dollar-limits.mjs",
     "deploy:cloudflare": "npx --yes wrangler@4.165.0 deploy",
@@ -22,7 +22,8 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test:model-credits": "node tests/model-credits.mjs"
+    "test:model-credits": "node tests/model-credits.mjs",
+    "test:recurring-context": "node tests/recurring-context.mjs"
   },
   "dependencies": {
     "@capacitor-community/contacts": "^7.1.0",

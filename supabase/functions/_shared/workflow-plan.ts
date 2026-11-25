@@ -26,14 +26,29 @@ export function workflowPlan(x:any){
    if(task.module!=='transactions'&&!x.modules.includes(task.module)||p?.mode!=='ai'||!p.tasks.includes(task.id))continue;
    if(failed.some((w:any)=>w.payload?.module===task.module&&w.payload?.task===task.id))continue;
    const signature={version:1,module:task.module,task:task.id,scope,evidence,
-    documents:stamps(x.documents),plans:stamps(x.plans),budgets:stamps(x.budgets),cash:stamps(x.cashSettings),records:stamps(x.moduleRecords),context:stamps(x.contextRecords)};
+    documents:stamps(x.documents),plans:stamps(x.plans),budgets:stamps(x.budgets),cash:stamps(x.cashSettings),records:stamps(x.moduleRecords),context:stamps(x.contextRecords),trips:stamps(x.trips)};
    core.options.push({kind:'review',module:task.module,task:task.id,start:scope.start,end:scope.end,signature});
+  }
+ }
+ if(x.reconciliationEnabled){
+  const seen=new Set<string>();
+  for(const q of [...x.items].reverse()){
+   const id=q.payload?.transaction_id;if(q.status!=='needs_input'||q.answer||!id||seen.has(id)||!['transactions','assets'].includes(q.module)||blockedTx.has(id))continue;
+   const t=available.find((t:any)=>t.id===id);if(!t)continue;
+   const p=x.policies.find((p:any)=>p.module===q.module);if(p?.mode!=='ai'||!p.tasks.includes(q.task))continue;
+   const records=(x.contextRecords||[]).filter((r:any)=>!r.archived&&r.transaction_ids?.includes(id));
+   const links=(x.tripLinks||[]).filter((l:any)=>l.transaction_id===id&&!l.excluded&&l.trip_id);
+   const words=String(t.merchant_name||t.name||'').toLowerCase().match(/[a-z]{4,}/g)||[];
+   const calendar=(x.calendarEvents||[]).filter((e:any)=>e.payload.starts_on<=t.date&&e.payload.ends_on>=t.date&&words.some((word:string)=>!['payment','purchase','online','hotel','flight','reservation'].includes(word)&&String(e.payload.title+' '+e.payload.location).toLowerCase().includes(word)));
+   if(!records.length&&!links.length&&!calendar.length)continue;seen.add(id);
+   const scope=quarterBounds(t.date);
+   core.options.push({kind:'resolve',module:q.module,task:q.task,transactionIds:[id],questionIds:[q.id],start:scope.start,end:scope.end,signature:{question:[q.id,q.revision],calendar:calendar.map((e:any)=>[e.event_id,e.updated_at]),records:records.map((r:any)=>[r.id,r.revision]),trips:links.map((l:any)=>[l.trip_id,l.revision,(x.trips||[]).find((t:any)=>t.id===l.trip_id)?.revision])}} as any);
   }
  }
  // Give each area a turn before draining the next receipt/category batch. Saved
  // answers take precedence; the scheduler and budgets still execute one step.
  const last=(o:any)=>Math.max(0,...x.work.filter((w:any)=>w.status==='done'&&w.payload?.module===o.module&&w.payload?.task===o.task&&w.kind===o.kind).map((w:any)=>Date.parse(w.updated_at||w.created_at)||0));
- core.options.sort((a,b)=>Number(b.kind==='answer')-Number(a.kind==='answer')||last(a)-last(b));
+ core.options.sort((a,b)=>Number(['answer','resolve'].includes(b.kind))-Number(['answer','resolve'].includes(a.kind))||last(a)-last(b));
  for(const w of failed)core.attention.push({title:`A saved ${w.kind} task needs review. Other independent checks can continue.`,href:'/#automatic-work'});
  core.attention=core.attention.slice(0,30);
  return core;
