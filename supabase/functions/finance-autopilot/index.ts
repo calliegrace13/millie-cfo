@@ -142,6 +142,11 @@ serve(async req=>{
   if (admin && owner && lease && (cost || /^Your (request limit |AI credit )/.test(message))) {
    const creditCost = /^Your AI credit cannot cover the next task \(maximum cost \$(\d+\.\d{6})\)\.$/.exec(message);
    const required = cost || creditCost ? Math.round(Number((cost || creditCost)![1]) * 1_000_000) : 0;
+   if (/^Your AI credit /.test(message)) {
+    const advanced=await admin.rpc('finance_ai_advance_credit',{_owner:owner,_lease:lease,_required:required});
+    if(advanced.error) return reply({error:'Your credit switch could not be checked. No paid retry was made.'},500);
+    if(advanced.data===true)return reply({status:'working',summary:'Checking the next available credit.'});
+   }
    const saved = await admin.rpc('finance_autopilot_wait', {_owner:owner, _lease:lease, _required:required, _attention:[]});
    if (saved.error) return reply({error:'Your automatic restart could not be scheduled.'},500);
    if (/^Your AI credit /.test(message)) await admin.from('finance_autopilot_settings').update({summary:message}).eq('owner_id',owner).eq('status','limit');

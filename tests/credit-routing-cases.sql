@@ -1,0 +1,54 @@
+do $$declare u uuid:=gen_random_uuid();r jsonb;lease uuid;blocked boolean;n bigint;begin
+ perform set_config('request.jwt.claim.sub',u::text,true);
+ insert into finance_ai_connections(owner_id,provider,model,credential,key_suffix,request_limit,request_limit_enabled) values(u,'openai','fixture','fixture-key','test',1,false),(u,'anthropic','fixture','fixture-key','test',1,false);
+ insert into finance_ai_settings(owner_id,active_provider) values(u,'openai');
+ insert into finance_ai_budgets values(u,1000000,5000000);
+ insert into finance_autopilot_settings(owner_id,enabled,background_enabled,provider,model,revision,status,workflow_scope,failure_count) values(u,true,true,'openai','fixture',1,'ready','all_enabled',0);
+ perform finance_set_ai_credit('openai',20000,(now() at time zone 'UTC')::date+2,null);
+ perform finance_set_ai_credit('anthropic',30000,(now() at time zone 'UTC')::date+1,null);
+ -- Manual is the migration default. Existing users are never silently opted in.
+ r:=finance_autopilot_begin(u);if r->>'provider'<>'openai' then raise exception 'Manual mode automatically switched';end if;
+ update finance_autopilot_settings set lease=null,lease_until=null where owner_id=u;
+ perform finance_set_ai_credit_routing(true,1);
+ blocked:=false;begin perform finance_set_ai_credit_routing(false,1);exception when raise_exception then blocked:=true;end;if not blocked then raise exception 'Stale routing edit admitted';end if;
+ r:=finance_autopilot_begin(u);lease:=(r->>'lease')::uuid;if r->>'provider'<>'anthropic' then raise exception 'Earliest credit not selected';end if;
+ if (finance_autopilot_begin(u)->>'busy')::boolean is distinct from true then raise exception 'Active lease interrupted';end if;
+ r:=finance_ai_reserve(u,gen_random_uuid(),repeat('a',64),repeat('b',64),1000,6000,false,'anthropic','fixture');
+ if finance_ai_credit_pick(u)<>'anthropic' then raise exception 'Pending hold incorrectly crossed credit balance';end if;
+ if finance_ai_advance_credit(u,lease,11096) then raise exception 'In-flight request switched';end if;
+ update finance_ai_receipt_runs set status='succeeded' where id=(r->>'id')::uuid;
+ update finance_ai_charges set state='settled',cost_micros=25000,settled_at=now() where run_id=(r->>'id')::uuid;
+ update finance_autopilot_settings set lease=null,lease_until=null where owner_id=u;
+ r:=finance_autopilot_begin(u);lease:=(r->>'lease')::uuid;
+ select count(*) into n from finance_ai_charges where owner_id=u;
+ blocked:=false;begin perform finance_ai_reserve(u,gen_random_uuid(),repeat('c',64),repeat('d',64),1000,6000,false,'anthropic','fixture');exception when raise_exception then if sqlerrm not like 'Your AI credit cannot%' then raise;end if;blocked:=true;end;if not blocked then raise exception 'Insufficient credit sent';end if;
+ if (select count(*) from finance_ai_charges where owner_id=u)<>n then raise exception 'Rejected credit made another charge';end if;
+ insert into finance_autopilot_work(owner_id,status,created_at) values(u,'running',clock_timestamp()+interval '1 second'),(u,'failed',clock_timestamp());
+ if finance_ai_advance_credit(u,gen_random_uuid(),11096) then raise exception 'Wrong lease changed routing';end if;
+ if not finance_ai_advance_credit(u,lease,11096) then raise exception 'Unsent task did not advance';end if;
+ if (select count(*) from finance_autopilot_work where owner_id=u and status='failed')<>1 then raise exception 'Failed paid task was altered';end if;
+ r:=finance_autopilot_begin(u);if r->>'provider'<>'openai' then raise exception 'Did not advance to next funded credit';end if;
+ if (select daily_micros from finance_ai_budgets where owner_id=u)<>1000000 or (select monthly_micros from finance_ai_budgets where owner_id=u)<>5000000 then raise exception 'Routing changed dollar limits';end if;
+ -- Expired plus insufficient credits pause; untracked connections never take over.
+ update finance_autopilot_settings set lease=null,lease_until=null where owner_id=u;
+ update finance_ai_credits set expires_on=(now() at time zone 'UTC')::date-1 where owner_id=u and provider='openai';
+ r:=finance_autopilot_begin(u);if r->>'status'<>'limit' or r ? 'lease' then raise exception 'No-credit route did not pause';end if;
+ if (select next_run_at from finance_autopilot_settings where owner_id=u)<>'infinity' then raise exception 'No-credit pause spins scheduler';end if;
+ perform finance_set_ai_credit('anthropic',100000,(now() at time zone 'UTC')::date+1,1);
+ if finance_ai_credit_pick(u)<>'anthropic' or finance_ai_next_window(u,11096)>now() then raise exception 'New credit did not wake routing';end if;
+ update finance_ai_budgets set daily_micros=0 where owner_id=u;
+ r:=finance_autopilot_begin(u);lease:=(r->>'lease')::uuid;
+ blocked:=false;begin perform finance_ai_reserve(u,gen_random_uuid(),repeat('e',64),repeat('f',64),1000,6000,false,'anthropic','fixture');exception when raise_exception then if sqlerrm not like 'Your AI dollar budget cannot%' then raise;end if;blocked:=true;end;if not blocked then raise exception 'Auto routing bypassed daily ceiling';end if;
+ update finance_ai_budgets set daily_micros=1000000,monthly_micros=10000 where owner_id=u;
+ blocked:=false;begin perform finance_ai_reserve(u,gen_random_uuid(),repeat('e',64),repeat('f',64),1000,6000,false,'anthropic','fixture');exception when raise_exception then blocked:=true;end;if not blocked then raise exception 'Auto routing bypassed monthly ceiling';end if;
+ -- Paid recovery is pinned even if another credit expires first.
+ insert into finance_autopilot_work(owner_id,status,created_at) values(u,'running',now()-interval '1 hour');
+ if finance_ai_advance_credit(u,lease,11096) then raise exception 'Paid recovery was replaced on another provider';end if;
+ update finance_autopilot_settings set lease=null,lease_until=null where owner_id=u;
+ perform finance_ai_choose(u,'anthropic',false);
+ if (finance_ai_status()->>'automaticCredits')::boolean then raise exception 'Manual provider choice did not disable automatic mode';end if;
+ perform set_config('request.jwt.claim.sub',gen_random_uuid()::text,true);
+ blocked:=false;begin perform finance_set_ai_credit_routing(true,2);exception when raise_exception then blocked:=true;end;if not blocked then raise exception 'Another owner changed routing';end if;
+ if has_function_privilege('authenticated','finance_ai_advance_credit(uuid,uuid,bigint)','EXECUTE') or has_function_privilege('authenticated','finance_ai_credit_pick(uuid)','EXECUTE') then raise exception 'Unsafe routing privileges';end if;
+end;$$;
+rollback;

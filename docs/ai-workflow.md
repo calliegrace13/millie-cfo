@@ -88,3 +88,24 @@ provider switch, or removal of credit protection; it never silently falls back t
 another provider. Shared daily/monthly budgets continue to count gross API usage,
 including usage that a provider may cover with credits. Credits never raise those
 limits, reset the ledger, force unnecessary work, or retry failed paid tasks.
+
+
+### Automatic expiring-credit selection
+
+The **Use expiring credits automatically** switch is an explicit opt-in for
+background work. Existing users remain in manual mode. At a safe task boundary,
+the server selects a connected model with valid pricing and recorded, unexpired
+credit, ordered by expiry date. Ties keep the current provider where possible.
+
+If the next maximum reservation cannot fit, no provider call is made. The task
+is superseded only if it has no metered stage, and the next eligible credit is
+considered on the next scheduler tick. A residual balance that cannot cover that
+maximum stays tracked; it becomes eligible again when reservations clear or the
+balance is refreshed enough to cover it. Expired, unpriced and untracked providers
+are excluded. No eligible credit means a durable pause, not a paid fallback.
+
+Existing leases and paid or uncertain work stay pinned for recovery. Routing does
+not retry a paid failure, reset a failure stop, enable hidden tasks, alter evidence
+permissions, increase dollar limits, or re-run completed financial checks. Both
+shared dollar ceilings and any optional request caps remain enforced by the final
+reservation. Choosing a provider manually turns automatic selection off.

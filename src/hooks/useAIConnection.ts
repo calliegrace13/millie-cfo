@@ -3,9 +3,9 @@ import {supabase} from '@/integrations/supabase/client';
 import {useAuth} from '@/hooks/useAuth';
 export type AIProvider='openai'|'anthropic';
 export const providerName=(p:string)=>p==='openai'?'OpenAI API':'Claude API';
-export type AICredit={amountMicros:number;remainingMicros:number;expiresOn:string;expired:boolean;recordedAt:string;revision:number};
+export type AICredit={blockedRequiredMicros?:number;amountMicros:number;remainingMicros:number;expiresOn:string;expired:boolean;recordedAt:string;revision:number};
 export type AIConnection={provider:AIProvider;model:string;suffix:string;requestLimit:number;requestLimitEnabled?:boolean;used:number;revision:number;pricingReady?:boolean;credit?:AICredit|null};
-export type AIStatus={active:AIProvider|null;connections:AIConnection[]};
+export type AIStatus={active:AIProvider|null;connections:AIConnection[];automaticCredits?:boolean;routingRevision?:number};
 export async function readAIStatus(){const {data,error}=await (supabase as any).rpc('finance_ai_status');if(error)throw Error('Unable to load AI settings.');return data as AIStatus;}
 export async function aiRequest(body:Record<string,unknown>){
  const {data,error}=await supabase.functions.invoke('finance-ai',{body});
